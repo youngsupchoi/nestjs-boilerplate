@@ -62,7 +62,7 @@
     "@types/eslint-scope": "^3.7.7",
     "@types/jest": "^29.5.14",
     "@types/node": "^22.9.0",
-    "@types/nodemailer": "^6.4.16",
+    "@types/nodemailer": "^6.4.17",
     "@types/supertest": "^6.0.2",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
