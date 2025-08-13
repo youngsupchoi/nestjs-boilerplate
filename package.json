@@ -1,5 +1,5 @@
 {
-  "name": "famo-api",
+  "name": "garden-of-fortune-api",
   "version": "1.0.0",
   "description": "An API Boilerplate to create a ready-to-use REST API in seconds with NestJS 10.x and Auth JWT System",
   "author": "youngsupChoi",

@@ -1,4 +1,4 @@
-import { RegisterPath } from '../../iam/enums/relationship.enum';
+import { RegisterPath, Gender } from '../../iam/enums/relationship.enum';
 import { ApiProperty } from '@nestjs/swagger';
 import { IsBoolean } from 'class-validator';
 import { Entity, PrimaryGeneratedColumn, Column, BaseEntity } from 'typeorm';
@@ -54,6 +54,42 @@ export class User extends BaseEntity {
   @Column({ nullable: true })
   @ApiProperty({ description: '생년월일', example: '19900101', nullable: true })
   birthday: string;
+
+  @Column({ type: 'time', nullable: true })
+  @ApiProperty({ description: '태어난 시간(HH:mm:ss)', example: '08:30:00', nullable: true })
+  birthTime: string | null;
+
+  @Column({
+    type: 'enum',
+    enum: Gender,
+    nullable: true,
+  })
+  @ApiProperty({ description: '성별', example: Gender.MALE, enum: Gender, nullable: true })
+  gender: Gender | null;
+
+  @Column({ nullable: true, length: 3 })
+  @ApiProperty({ description: '출생지(국가 코드, ISO-3166-1 alpha-2/3)', example: 'KR', nullable: true })
+  birthCountry: string | null;
+
+  @Column({ nullable: true, length: 255 })
+  @ApiProperty({ description: '주소', example: '서울특별시 강남구 테헤란로 123', nullable: true })
+  address: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  @ApiProperty({ description: '양력/음력 구분', example: 'solar', nullable: true })
+  calendarType: string | null;
+
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  @ApiProperty({ description: '사주 8자(문자열)', example: '甲子乙丑丙寅丁卯', nullable: true })
+  sajuEightLetters: string | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  @ApiProperty({ description: '대운', example: ['갑자', '을축'], nullable: true })
+  luckDaewoon: any[] | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  @ApiProperty({ description: '세운', example: [{ year: 2024, value: '...' }], nullable: true })
+  luckSewoon: Record<string, any>[] | null;
 
   @Column({ default: false })
   @ApiProperty({ description: '마케팅 동의 여부', example: false })
