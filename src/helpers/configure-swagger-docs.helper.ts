@@ -18,6 +18,10 @@ export function configureSwaggerDocs(
       .addServer('http://localhost:8000', 'Local server')
       .addTag('auth')
       .addTag('users')
+      .addTag('chat')
+      .addTag('orders')
+      .addTag('consulting')
+      .addTag('mypage')
       .addBearerAuth({
         description: 'Please enter token:',
         name: 'Authorization',

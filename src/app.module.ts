@@ -9,6 +9,11 @@ import { IamModule } from './iam/iam.module';
 import { validateSchemaEnv } from './helpers/validation-schema-env';
 import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
 import { SmsModule } from './sms/sms.module';
+import { ChatModule } from './chat/chat.module';
+import { OrdersModule } from './orders/orders.module';
+import { ConsultingModule } from './consulting/consulting.module';
+import { MypageModule } from './mypage/mypage.module';
+import { SajuModule } from './saju/saju.module';
 
 @Module({
   imports: [
@@ -37,7 +42,7 @@ import { SmsModule } from './sms/sms.module';
         username: config.get<string>('TYPEORM_USERNAME'),
         password: config.get<string>('TYPEORM_PASSWORD'),
         database: config.get<string>('TYPEORM_DATABASE'),
-        synchronize: true,
+        synchronize: false, // 만세력 데이터는 기존 구조 유지
         entities: [__dirname + '/**/*.{model,entity}.{ts,js}'],
         namingStrategy: new SnakeNamingStrategy(),
         migrations: ['dist/migrations/**/*.js'],
@@ -54,6 +59,11 @@ import { SmsModule } from './sms/sms.module';
     IamModule,
     UsersModule,
     SmsModule,
+    ChatModule,
+    OrdersModule,
+    ConsultingModule,
+    MypageModule,
+    SajuModule,
   ],
   controllers: [AppController],
   providers: [AppService],
