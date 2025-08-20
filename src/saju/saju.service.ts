@@ -1,8 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { SajuFromCalendar, SajuExtractionParams } from './interfaces/saju-from-calendar.interface';
 import { ComprehensiveSaju, SajuAnalysisOptions } from './interfaces/comprehensive-saju.interface';
+import { TenStarsInfo } from './interfaces/ten-stars.interface';
 import { HourPillarUtils } from './utils/hour-pillar.utils';
+import { TenStarsUtils } from './utils/ten-stars.utils';
 import { CalendarDataRepository } from './repositories/calendar-data.repository';
+import { HeavenlyStem } from './enums/heavenly-stem.enum';
+import { EarthlyBranch } from './enums/earthly-branch.enum';
+import { TenStars } from './enums/ten-stars.enum';
 
 @Injectable()
 export class SajuService {
@@ -216,5 +221,142 @@ export class SajuService {
    */
   formatComprehensiveSaju(saju: ComprehensiveSaju): string {
     return this.formatSajuFromCalendar(saju.basicSaju);
+  }
+
+  /**
+   * 한자 천간을 HeavenlyStem enum으로 변환합니다.
+   */
+  private convertChineseToHeavenlyStem(chinese: string): HeavenlyStem {
+    const map: Record<string, HeavenlyStem> = {
+      '甲': HeavenlyStem.GAP,
+      '乙': HeavenlyStem.EUL,
+      '丙': HeavenlyStem.BYEONG,
+      '丁': HeavenlyStem.JEONG,
+      '戊': HeavenlyStem.MU,
+      '己': HeavenlyStem.GI,
+      '庚': HeavenlyStem.GYEONG,
+      '辛': HeavenlyStem.SIN,
+      '壬': HeavenlyStem.IM,
+      '癸': HeavenlyStem.GYE,
+    };
+    
+    const stem = map[chinese];
+    if (!stem) {
+      throw new Error(`알 수 없는 천간: ${chinese}`);
+    }
+    
+    return stem;
+  }
+
+  /**
+   * 한자 지지를 EarthlyBranch enum으로 변환합니다.
+   */
+  private convertChineseToEarthlyBranch(chinese: string): EarthlyBranch {
+    const map: Record<string, EarthlyBranch> = {
+      '子': EarthlyBranch.JA,
+      '丑': EarthlyBranch.CHUK,
+      '寅': EarthlyBranch.IN,
+      '卯': EarthlyBranch.MYO,
+      '辰': EarthlyBranch.JIN,
+      '巳': EarthlyBranch.SA,
+      '午': EarthlyBranch.O,
+      '未': EarthlyBranch.MI,
+      '申': EarthlyBranch.SHIN,
+      '酉': EarthlyBranch.YU,
+      '戌': EarthlyBranch.SUL,
+      '亥': EarthlyBranch.HAE,
+    };
+    
+    const branch = map[chinese];
+    if (!branch) {
+      throw new Error(`알 수 없는 지지: ${chinese}`);
+    }
+    
+    return branch;
+  }
+
+  /**
+   * 사주 팔자에서 십성을 계산합니다.
+   */
+  calculateTenStars(saju: SajuFromCalendar): TenStarsInfo {
+    try {
+      // 일간을 기준으로 설정
+      const dayMaster = this.convertChineseToHeavenlyStem(saju.dayPillar.heavenlyStem);
+      
+      // 천간 십성 계산
+      const yearStemTenStar = TenStarsUtils.calculateTenStar(
+        dayMaster, 
+        this.convertChineseToHeavenlyStem(saju.yearPillar.heavenlyStem)
+      );
+      const monthStemTenStar = TenStarsUtils.calculateTenStar(
+        dayMaster, 
+        this.convertChineseToHeavenlyStem(saju.monthPillar.heavenlyStem)
+      );
+      const hourStemTenStar = TenStarsUtils.calculateTenStar(
+        dayMaster, 
+        this.convertChineseToHeavenlyStem(saju.hourPillar.heavenlyStem)
+      );
+
+      // 지지 십성 계산 (지장간 본기 기준)
+      const yearBranchTenStar = TenStarsUtils.calculateBranchTenStar(
+        dayMaster, 
+        this.convertChineseToEarthlyBranch(saju.yearPillar.earthlyBranch)
+      );
+      const monthBranchTenStar = TenStarsUtils.calculateBranchTenStar(
+        dayMaster, 
+        this.convertChineseToEarthlyBranch(saju.monthPillar.earthlyBranch)
+      );
+      const dayBranchTenStar = TenStarsUtils.calculateBranchTenStar(
+        dayMaster, 
+        this.convertChineseToEarthlyBranch(saju.dayPillar.earthlyBranch)
+      );
+      const hourBranchTenStar = TenStarsUtils.calculateBranchTenStar(
+        dayMaster, 
+        this.convertChineseToEarthlyBranch(saju.hourPillar.earthlyBranch)
+      );
+
+      return {
+        heavenlyStems: {
+          year: yearStemTenStar,
+          month: monthStemTenStar,
+          day: `일간 (${saju.dayPillar.heavenlyStem})`,
+          hour: hourStemTenStar,
+        },
+        earthlyBranches: {
+          year: yearBranchTenStar,
+          month: monthBranchTenStar,
+          day: dayBranchTenStar,
+          hour: hourBranchTenStar,
+        },
+      };
+    } catch (error) {
+      console.error('십성 계산 중 오류:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`십성 계산 중 오류가 발생했습니다: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * 십성 정보를 포함한 사주 정보를 반환합니다.
+   */
+  async getSajuWithTenStars(
+    year: number,
+    month: number,
+    day: number,
+    hour: number,
+    minute: number = 0,
+    isSolar: boolean = true,
+    isLeapMonth: boolean = false,
+  ): Promise<SajuFromCalendar & { tenStars: TenStarsInfo }> {
+    const basicSaju = await this.getSajuByDateTime(
+      year, month, day, hour, minute, isSolar, isLeapMonth
+    );
+    
+    const tenStars = this.calculateTenStars(basicSaju);
+    
+    return {
+      ...basicSaju,
+      tenStars,
+    };
   }
 }

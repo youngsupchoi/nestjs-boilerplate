@@ -3,6 +3,8 @@ import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { SajuService } from './saju.service';
 import { SajuFromCalendar } from './interfaces/saju-from-calendar.interface';
 import { ComprehensiveSaju } from './interfaces/comprehensive-saju.interface';
+import { TenStarsInfo } from './interfaces/ten-stars.interface';
+import { TenStarsUtils } from './utils/ten-stars.utils';
 import { AuthGuard } from '../iam/login/decorators/auth-guard.decorator';
 import { AuthType } from '../iam/login/enums/auth-type.enum';
 
@@ -13,12 +15,12 @@ export class SajuController {
   constructor(private readonly sajuService: SajuService) {}
 
   /**
-   * 만세력 기반 사주 추출 API (기본 정보만)
+   * 만세력 기반 사주 추출 API (십성 정보 포함)
    */
   @Get('extract')
   @ApiOperation({ 
-    summary: '만세력 기반 사주 추출 (기본)',
-    description: '생년월일시를 입력받아 만세력 데이터베이스에서 기본 사주 정보를 추출합니다.'
+    summary: '만세력 기반 사주 추출 (십성 포함)',
+    description: '생년월일시를 입력받아 만세력 데이터베이스에서 사주 정보와 십성을 추출합니다. 일간을 기준으로 각 문자의 십성을 계산하여 함께 반환합니다.'
   })
   @ApiQuery({ name: 'year', description: '년도 (1900-2100)', type: Number })
   @ApiQuery({ name: 'month', description: '월 (1-12)', type: Number })
@@ -55,7 +57,7 @@ export class SajuController {
       // 입력 값 검증
       this.validateInput(year, month, day, hour, minute);
 
-      const result = await this.sajuService.getSajuByDateTime(
+      const result = await this.sajuService.getSajuWithTenStars(
         year,
         month,
         day,
@@ -67,9 +69,9 @@ export class SajuController {
 
       return {
         success: true,
-        message: '사주 추출이 성공적으로 완료되었습니다.',
+        message: '사주 추출이 성공적으로 완료되었습니다. (십성 정보 포함)',
         data: result,
-        formatted: this.sajuService.formatSajuFromCalendar(result)
+        formatted: this.formatSajuWithTenStars(result)
       };
     } catch (error: any) {
       if (error.message?.includes('만세력 데이터에서 해당 날짜를 찾을 수 없습니다')) {
@@ -317,6 +319,31 @@ export class SajuController {
         HttpStatus.INTERNAL_SERVER_ERROR
       );
     }
+  }
+
+  /**
+   * 십성 정보를 포함한 사주 정보 포맷팅 메소드
+   */
+  private formatSajuWithTenStars(saju: SajuFromCalendar & { tenStars: TenStarsInfo }): string {
+    const basicFormatted = this.sajuService.formatSajuFromCalendar(saju);
+    
+    const tenStarsLines = [
+      '',
+      '=== 십성 (十星) 정보 ===',
+      '** 천간 십성 **',
+      `연간: ${saju.yearPillar.heavenlyStem} → ${saju.tenStars.heavenlyStems.year} (${TenStarsUtils.getTenStarMeaning(saju.tenStars.heavenlyStems.year)})`,
+      `월간: ${saju.monthPillar.heavenlyStem} → ${saju.tenStars.heavenlyStems.month} (${TenStarsUtils.getTenStarMeaning(saju.tenStars.heavenlyStems.month)})`,
+      `일간: ${saju.dayPillar.heavenlyStem} → ${saju.tenStars.heavenlyStems.day} ⭐`,
+      `시간: ${saju.hourPillar.heavenlyStem} → ${saju.tenStars.heavenlyStems.hour} (${TenStarsUtils.getTenStarMeaning(saju.tenStars.heavenlyStems.hour)})`,
+      '',
+      '** 지지 십성 (지장간 본기 기준) **',
+      `연지: ${saju.yearPillar.earthlyBranch} → ${saju.tenStars.earthlyBranches.year} (${TenStarsUtils.getTenStarMeaning(saju.tenStars.earthlyBranches.year)})`,
+      `월지: ${saju.monthPillar.earthlyBranch} → ${saju.tenStars.earthlyBranches.month} (${TenStarsUtils.getTenStarMeaning(saju.tenStars.earthlyBranches.month)})`,
+      `일지: ${saju.dayPillar.earthlyBranch} → ${saju.tenStars.earthlyBranches.day} (${TenStarsUtils.getTenStarMeaning(saju.tenStars.earthlyBranches.day)})`,
+      `시지: ${saju.hourPillar.earthlyBranch} → ${saju.tenStars.earthlyBranches.hour} (${TenStarsUtils.getTenStarMeaning(saju.tenStars.earthlyBranches.hour)})`,
+    ];
+
+    return basicFormatted + '\n' + tenStarsLines.join('\n');
   }
 
   /**

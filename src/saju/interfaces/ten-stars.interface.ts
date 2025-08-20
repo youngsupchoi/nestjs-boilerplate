@@ -19,10 +19,4 @@ export interface TenStarsInfo {
     day: TenStars;
     hour: TenStars;
   };
-
-  // 기존 호환성을 위한 속성들 (deprecated)
-  yearStem: TenStars;
-  monthStem: TenStars;
-  dayStem: string;
-  hourStem: TenStars;
 }
