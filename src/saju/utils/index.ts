@@ -5,5 +5,4 @@ export { HiddenStemsUtils } from './hidden-stems.utils';
 export { TwelveLifeStagesUtils } from './twelve-life-stages.utils';
 export { TwelveSpiritsUtils } from './twelve-spirits.utils';
 export { TimeCorrectionUtils } from './time-correction.utils';
-export { SolarTermsUtils } from './solar-terms.utils';
 export { HourPillarUtils } from './hour-pillar.utils';
