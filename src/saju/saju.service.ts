@@ -1,13 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { SajuFromCalendar, SajuExtractionParams } from './interfaces/saju-from-calendar.interface';
 import { ComprehensiveSaju, SajuAnalysisOptions } from './interfaces/comprehensive-saju.interface';
+import { DaeunList, DaeunInfo } from './interfaces/daeun.interface';
+import { DaeunCalculationParams } from './interfaces/daeun-calculation.interface';
 import { TenStarsInfo } from './interfaces/ten-stars.interface';
 import { HourPillarUtils } from './utils/hour-pillar.utils';
 import { TenStarsUtils } from './utils/ten-stars.utils';
 import { CalendarDataRepository } from './repositories/calendar-data.repository';
-import { HeavenlyStem } from './enums/heavenly-stem.enum';
+import { HeavenlyStem, HEAVENLY_STEM_INFO } from './enums/heavenly-stem.enum';
 import { EarthlyBranch } from './enums/earthly-branch.enum';
 import { TenStars } from './enums/ten-stars.enum';
+import { Gender } from './enums/gender.enum';
 
 @Injectable()
 export class SajuService {
@@ -359,4 +362,211 @@ export class SajuService {
       tenStars,
     };
   }
+
+  // ==================== 대운(大運) 계산 관련 메소드 ====================
+
+  /**
+   * 1단계: 대운의 순행/역행 결정 (연주 천간의 음양 + 성별)
+   * @param gender 성별
+   * @param yearStem 연주 천간
+   * @returns true: 순행, false: 역행
+   */
+  private determineDaeunDirection(gender: Gender, yearStem: HeavenlyStem): boolean {
+    const stemInfo = HEAVENLY_STEM_INFO[yearStem];
+    const isYangStem = stemInfo.isYang;
+    
+    if (gender === Gender.MALE) {
+      // 남자: 양간년생=순행, 음간년생=역행
+      return isYangStem;
+    } else {
+      // 여자: 음간년생=순행, 양간년생=역행
+      return !isYangStem;
+    }
+  }
+
+  /**
+   * 2단계: 대운수(첫 대운 시작 나이) 계산 - DB 기반 절기 거리 활용
+   * @param year 생년
+   * @param month 생월
+   * @param day 생일
+   * @param isForward 순행 여부
+   * @returns 대운수 (첫 대운 시작 나이)
+   */
+  private async calculateDaeunNumber(
+    year: number,
+    month: number,
+    day: number,
+    isForward: boolean
+  ): Promise<number> {
+    if (!this.calendarDataRepository) {
+      // DB 없으면 기본값 반환
+      return isForward ? 5 : 4;
+    }
+
+    try {
+      // DB에서 절기까지의 거리 계산
+      const distanceToSolarTerm = await this.calendarDataRepository
+        .calculateDistanceToSolarTerm(year, month, day, isForward);
+      
+      // 3일 = 1년 공식 적용 (올림 처리)
+      const daeunNumber = Math.ceil(distanceToSolarTerm / 3);
+      
+      // 대운수는 보통 3~8세 범위로 조정
+      return Math.max(3, Math.min(8, daeunNumber));
+      
+    } catch (error) {
+      console.error('대운수 계산 오류:', error);
+      // 오류 시 기본값 반환
+      return isForward ? 5 : 4;
+    }
+  }
+
+  /**
+   * 3단계: 육십갑자 배열 생성
+   * @returns 육십갑자 배열
+   */
+  private generateSixtyGanzhi(): string[] {
+    const heavenlyStems = ['甲', '乙', '丙', '丁', '戊', '己', '庚', '辛', '壬', '癸'];
+    const earthlyBranches = ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥'];
+    
+    const sixtyGanzhi: string[] = [];
+    
+    for (let i = 0; i < 60; i++) {
+      const stem = heavenlyStems[i % 10];
+      const branch = earthlyBranches[i % 12];
+      sixtyGanzhi.push(stem + branch);
+    }
+    
+    return sixtyGanzhi;
+  }
+
+  /**
+   * 3단계: 대운 간지 목록 생성 (월주 기준 + 순행/역행)
+   * @param monthPillar 월주 간지
+   * @param isForward 순행 여부
+   * @returns 대운 간지 목록 (10개 고정)
+   */
+  private generateDaeunGanzhi(
+    monthPillar: string,
+    isForward: boolean
+  ): string[] {
+    const sixtyGanzhi = this.generateSixtyGanzhi();
+    
+    // 월주의 육십갑자 인덱스 찾기
+    const currentIndex = sixtyGanzhi.indexOf(monthPillar);
+    
+    if (currentIndex === -1) {
+      throw new Error(`올바르지 않은 월주 간지: ${monthPillar}`);
+    }
+    
+    const daeunGanzhiList: string[] = [];
+    
+    for (let i = 0; i < 10; i++) {
+      let targetIndex;
+      
+      if (isForward) {
+        // 순행: 월주 다음 간지부터 순서대로
+        targetIndex = (currentIndex + i + 1) % 60;
+      } else {
+        // 역행: 월주 이전 간지부터 역순으로
+        targetIndex = (currentIndex - i - 1 + 60) % 60;
+      }
+      
+      daeunGanzhiList.push(sixtyGanzhi[targetIndex]);
+    }
+    
+    return daeunGanzhiList;
+  }
+
+  /**
+   * 대운 전체 목록 계산 (메인 함수)
+   * @param params 대운 계산 파라미터
+   * @returns 대운 전체 목록
+   */
+  async calculateDaeunList(params: DaeunCalculationParams): Promise<DaeunList> {
+    // 1. 기본 사주 정보 추출
+    const basicSaju = await this.extractSajuFromCalendar({
+      year: params.year,
+      month: params.month,
+      day: params.day,
+      hour: params.hour,
+      minute: params.minute || 0,
+      isSolar: params.isSolar ?? true,
+      isLeapMonth: params.isLeapMonth || false
+    });
+    
+    // 2. 1단계: 순행/역행 결정 (연주 천간의 음양 + 성별)
+    const yearStem = this.convertChineseToHeavenlyStem(basicSaju.yearPillar.heavenlyStem);
+    const isForward = this.determineDaeunDirection(params.gender, yearStem);
+    
+    // 3. 2단계: 대운수 계산 (DB 기반 절기 거리)
+    const daeunStartAge = await this.calculateDaeunNumber(
+      params.year,
+      params.month,
+      params.day,
+      isForward
+    );
+    
+    // 4. 3단계: 월주 기준 대운 간지 생성
+    const daeunGanzhiList = this.generateDaeunGanzhi(
+      basicSaju.monthPillar.ganzhi,
+      isForward
+    );
+    
+    // 5. 대운 정보 객체 생성
+    const daeunPeriods: DaeunInfo[] = [];
+    let currentAge = daeunStartAge;
+    
+    for (let i = 0; i < daeunGanzhiList.length; i++) {
+      const ganzhi = daeunGanzhiList[i];
+      
+      const daeunInfo: DaeunInfo = {
+        startAge: currentAge,
+        endAge: currentAge + 9, // 10년 단위 (예: 3-12세, 13-22세)
+        heavenlyStem: this.convertChineseToHeavenlyStem(ganzhi.charAt(0)),
+        earthlyBranch: this.convertChineseToEarthlyBranch(ganzhi.charAt(1)),
+        ganzhi,
+        startYear: params.year + currentAge,
+        endYear: params.year + currentAge + 9
+      };
+      
+      daeunPeriods.push(daeunInfo);
+      currentAge += 10; // 다음 대운은 10년 후
+    }
+    
+    return {
+      daeunStartAge,
+      isForward,
+      daeunPeriods
+    };
+  }
+
+
+
+  /**
+   * 대운 목록을 보기 좋은 형태로 포맷팅
+   * @param daeunList 대운 목록
+   * @returns 포맷팅된 문자열
+   */
+  formatDaeunList(daeunList: DaeunList): string {
+    const lines = [
+      '=== 대운(大運) 목록 ===',
+      `대운 시작 나이: ${daeunList.daeunStartAge}세`,
+      `대운 방향: ${daeunList.isForward ? '순행(順行)' : '역행(逆行)'}`,
+      '',
+      '** 대운 기간별 간지 **'
+    ];
+    
+    daeunList.daeunPeriods.forEach((daeun, index) => {
+      lines.push(
+        `${index + 1}운: ${daeun.startAge}-${daeun.endAge}세 (${daeun.startYear}-${daeun.endYear}년) → ${daeun.ganzhi}`
+      );
+    });
+    
+    return lines.join('\n');
+  }
+
+
+
+  // ==================== 대운 계산 메소드 끝 ====================
 }

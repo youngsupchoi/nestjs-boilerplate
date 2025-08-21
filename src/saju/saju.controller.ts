@@ -3,10 +3,12 @@ import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { SajuService } from './saju.service';
 import { SajuFromCalendar } from './interfaces/saju-from-calendar.interface';
 import { ComprehensiveSaju } from './interfaces/comprehensive-saju.interface';
+import { DaeunList } from './interfaces/daeun.interface';
 import { TenStarsInfo } from './interfaces/ten-stars.interface';
 import { TenStarsUtils } from './utils/ten-stars.utils';
 import { AuthGuard } from '../iam/login/decorators/auth-guard.decorator';
 import { AuthType } from '../iam/login/enums/auth-type.enum';
+import { Gender } from './enums/gender.enum';
 
 @ApiTags('사주')
 @Controller('saju')
@@ -346,6 +348,90 @@ export class SajuController {
     return basicFormatted + '\n' + tenStarsLines.join('\n');
   }
 
+  // ==================== 대운(大運) 계산 API ====================
+
+  /**
+   * 대운 전체 목록 조회 API
+   */
+  @Get('daeun')
+  @ApiOperation({ 
+    summary: '대운(大運) 전체 목록 조회',
+    description: '생년월일시와 성별을 입력받아 10년 단위 대운 목록을 계산합니다. 순행/역행, 대운수, 월주 기준 간지 순환을 모두 반영합니다.'
+  })
+  @ApiQuery({ name: 'year', description: '생년 (1900-2100)', type: Number })
+  @ApiQuery({ name: 'month', description: '생월 (1-12)', type: Number })
+  @ApiQuery({ name: 'day', description: '생일 (1-31)', type: Number })
+  @ApiQuery({ name: 'hour', description: '생시 (0-23)', type: Number })
+  @ApiQuery({ name: 'gender', description: '성별 (남성, 여성)', enum: Gender })
+  @ApiQuery({ name: 'minute', description: '생분 (0-59)', type: Number, required: false })
+  @ApiQuery({ name: 'isSolar', description: '양력 여부 (true: 양력, false: 음력)', type: Boolean, required: false })
+  @ApiQuery({ name: 'isLeapMonth', description: '윤달 여부 (음력인 경우만)', type: Boolean, required: false })
+  @ApiResponse({
+    status: 200,
+    description: '대운 목록 조회 성공',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        message: { type: 'string' },
+        data: { type: 'object' },
+        formatted: { type: 'string' }
+      }
+    }
+  })
+  @ApiResponse({ status: 400, description: '잘못된 요청 파라미터' })
+  @ApiResponse({ status: 404, description: '해당 날짜의 만세력 데이터를 찾을 수 없음' })
+  async getDaeunList(
+    @Query('year', ParseIntPipe) year: number,
+    @Query('month', ParseIntPipe) month: number,
+    @Query('day', ParseIntPipe) day: number,
+    @Query('hour', ParseIntPipe) hour: number,
+    @Query('gender') gender: Gender,
+    @Query('minute') minute?: number,
+    @Query('isSolar') isSolar?: boolean,
+    @Query('isLeapMonth') isLeapMonth?: boolean,
+  ) {
+    try {
+      // 입력 값 검증
+      this.validateInput(year, month, day, hour, minute);
+      this.validateGender(gender);
+
+      const result = await this.sajuService.calculateDaeunList({
+        year,
+        month,
+        day,
+        hour,
+        minute: minute || 0,
+        isSolar: isSolar ?? true,
+        isLeapMonth: isLeapMonth || false,
+        gender
+      });
+
+      return {
+        success: true,
+        message: '대운 목록 계산이 성공적으로 완료되었습니다.',
+        data: result,
+        formatted: this.sajuService.formatDaeunList(result)
+      };
+    } catch (error: any) {
+      if (error.message?.includes('만세력 데이터에서 해당 날짜를 찾을 수 없습니다')) {
+        throw new HttpException(
+          '해당 날짜의 만세력 데이터를 찾을 수 없습니다. 1900년~2100년 범위 내의 날짜를 입력해주세요.',
+          HttpStatus.NOT_FOUND
+        );
+      }
+      
+      throw new HttpException(
+        `대운 계산 중 오류가 발생했습니다: ${error.message || error}`,
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
+
+
+
+  // ==================== 대운 계산 API 끝 ====================
+
   /**
    * 입력 값 검증 메소드
    */
@@ -385,4 +471,18 @@ export class SajuController {
       );
     }
   }
+
+  /**
+   * 성별 검증 메소드
+   */
+  private validateGender(gender: Gender) {
+    if (!gender || (gender !== Gender.MALE && gender !== Gender.FEMALE)) {
+      throw new HttpException(
+        '성별을 올바르게 입력해주세요. (남성 또는 여성)',
+        HttpStatus.BAD_REQUEST
+      );
+    }
+  }
+
+
 }

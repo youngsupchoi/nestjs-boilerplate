@@ -123,4 +123,155 @@ export class CalendarDataRepository {
       .addOrderBy('calendar.cd_sd', 'ASC')
       .getMany();
   }
+
+  // ==================== 대운 계산을 위한 절기 관련 메소드 ====================
+
+  /**
+   * 특정 날짜 주변의 절기일 찾기 (월주 변화점 기준)
+   * @param year 년도
+   * @param month 월
+   * @param day 일
+   * @returns 이전 절기와 다음 절기 정보
+   */
+  async findSolarTermsAroundDate(
+    year: number, 
+    month: number, 
+    day: number
+  ): Promise<{
+    previousTerm: { date: number, monthPillar: string } | null;
+    nextTerm: { date: number, monthPillar: string } | null;
+  }> {
+    // 이전 달, 현재 달, 다음 달 데이터 조회
+    const prevMonth = month === 1 ? 12 : month - 1;
+    const nextMonth = month === 12 ? 1 : month + 1;
+    const prevYear = month === 1 ? year - 1 : year;
+    const nextYear = month === 12 ? year + 1 : year;
+    
+    const prevData = await this.findByYearMonth(prevYear, prevMonth);
+    const currentData = await this.findByYearMonth(year, month);
+    const nextData = await this.findByYearMonth(nextYear, nextMonth);
+    
+    // 현재 달에서 절기 변화점 찾기
+    const currentTermChange = this.findMonthPillarChange(currentData);
+    const nextTermChange = this.findMonthPillarChange(nextData);
+    
+    // 이전 달에서 절기점 찾기 (역방향)
+    const prevTermChange = this.findMonthPillarChange(prevData, true);
+    
+    return {
+      previousTerm: prevTermChange ? {
+        date: prevTermChange.date,
+        monthPillar: prevTermChange.monthPillar
+      } : null,
+      nextTerm: currentTermChange ? {
+        date: currentTermChange.date, 
+        monthPillar: currentTermChange.monthPillar
+      } : (nextTermChange ? {
+        date: nextTermChange.date,
+        monthPillar: nextTermChange.monthPillar  
+      } : null)
+    };
+  }
+
+  /**
+   * 월주 변화점 찾기 (절기일 탐지)
+   * @param monthData 특정 월의 만세력 데이터
+   * @param reverse 역방향 탐색 여부
+   * @returns 월주 변화점 정보
+   */
+  private findMonthPillarChange(
+    monthData: CalendarData[], 
+    reverse: boolean = false
+  ): { date: number, monthPillar: string } | null {
+    if (monthData.length === 0) return null;
+    
+    const data = reverse ? [...monthData].reverse() : monthData;
+    let previousMonthPillar = data[0].cd_hmganjee;
+    
+    for (let i = 1; i < data.length; i++) {
+      const currentMonthPillar = data[i].cd_hmganjee;
+      
+      if (previousMonthPillar !== currentMonthPillar) {
+        return {
+          date: parseInt(data[i].cd_sd),
+          monthPillar: currentMonthPillar
+        };
+      }
+      previousMonthPillar = currentMonthPillar;
+    }
+    
+    return null;
+  }
+
+  /**
+   * 생일과 절기일 사이의 거리 계산
+   * @param year 년도
+   * @param month 월  
+   * @param day 일
+   * @param isForward 순행 여부
+   * @returns 절기까지의 일수
+   */
+  async calculateDistanceToSolarTerm(
+    year: number,
+    month: number, 
+    day: number,
+    isForward: boolean
+  ): Promise<number> {
+    try {
+      const solarTerms = await this.findSolarTermsAroundDate(year, month, day);
+      
+      let distance: number;
+      
+      if (isForward) {
+        // 순행: 다음 절기까지의 일수
+        if (solarTerms.nextTerm) {
+          if (solarTerms.nextTerm.date > day) {
+            // 현재 달의 절기까지
+            distance = solarTerms.nextTerm.date - day;
+          } else {
+            // 다음 달 절기까지 (현재 달 절기를 이미 지남)
+            const daysInMonth = this.getDaysInMonth(year, month);
+            distance = (daysInMonth - day) + (solarTerms.nextTerm.date || 5);
+          }
+        } else {
+          // 절기 정보 없으면 기본값
+          distance = 30 - day + 5; // 대략적인 다음 절기까지
+        }
+      } else {
+        // 역행: 이전 절기부터의 일수
+        if (solarTerms.previousTerm) {
+          distance = day - solarTerms.previousTerm.date;
+          if (distance <= 0) {
+            // 이전 달에서 계산
+            const prevMonth = month === 1 ? 12 : month - 1;
+            const prevYear = month === 1 ? year - 1 : year;
+            const daysInPrevMonth = this.getDaysInMonth(prevYear, prevMonth);
+            distance = daysInPrevMonth + distance;
+          }
+        } else {
+          // 절기 정보 없으면 기본값
+          distance = day;
+        }
+      }
+      
+      return Math.max(1, distance); // 최소 1일
+      
+    } catch (error) {
+      console.error('절기 거리 계산 오류:', error);
+      // DB 오류 시 기본값 반환
+      return isForward ? (30 - day + 5) : day;
+    }
+  }
+
+  /**
+   * 특정 월의 일수 계산
+   * @param year 년도
+   * @param month 월
+   * @returns 해당 월의 일수
+   */
+  private getDaysInMonth(year: number, month: number): number {
+    return new Date(year, month, 0).getDate();
+  }
+
+  // ==================== 절기 관련 메소드 끝 ====================
 }

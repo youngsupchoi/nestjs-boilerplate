@@ -40,16 +40,4 @@ export interface DaeunList {
   daeunPeriods: DaeunInfo[];
 }
 
-/**
- * 특정 나이의 대운
- */
-export interface CurrentDaeun {
-  /** 현재 나이 */
-  currentAge: number;
-  
-  /** 현재 대운 정보 */
-  daeun: DaeunInfo;
-  
-  /** 대운 내에서의 경과 년수 */
-  yearsInDaeun: number;
-}
+
