@@ -3,6 +3,8 @@ import { SajuFromCalendar, SajuExtractionParams } from './interfaces/saju-from-c
 import { ComprehensiveSaju, SajuAnalysisOptions } from './interfaces/comprehensive-saju.interface';
 import { DaeunList, DaeunInfo } from './interfaces/daeun.interface';
 import { DaeunCalculationParams } from './interfaces/daeun-calculation.interface';
+import { MonthlyFortune, MonthlyFortuneList } from './interfaces/monthly-fortune.interface';
+import { YearlyFortune, YearlyFortuneList } from './interfaces/yearly-fortune.interface';
 import { TenStarsInfo } from './interfaces/ten-stars.interface';
 import { HourPillarUtils } from './utils/hour-pillar.utils';
 import { TenStarsUtils } from './utils/ten-stars.utils';
@@ -569,4 +571,232 @@ export class SajuService {
 
 
   // ==================== 대운 계산 메소드 끝 ====================
+
+  // ==================== 월운(月運) 계산 관련 메소드 ====================
+
+  /**
+   * 월운(月運) 조회
+   * 특정 연월의 간지를 조회하여 월운 정보를 반환합니다.
+   * 절기 기준으로 월주가 결정되므로, 각 월의 첫 절기가 포함된 날짜를 기준으로 조회합니다.
+   * @param year 조회할 연도
+   * @param month 조회할 월 (1-12)
+   * @returns 월운 정보
+   */
+  async getMonthlyFortune(year: number, month: number): Promise<MonthlyFortune> {
+    if (!this.calendarDataRepository) {
+      throw new Error('CalendarDataRepository가 주입되지 않았습니다. 월운 조회 기능을 사용하려면 Repository를 주입해야 합니다.');
+    }
+
+    try {
+      // 각 월의 중간 시점을 기준으로 조회
+      // 절기가 확실히 바뀐 시점을 보장하기 위해 15일을 기준으로 사용
+      const referenceDay = 15;
+      
+      const calendarData = await this.calendarDataRepository.findBySolarDate(year, month, referenceDay);
+      
+      if (!calendarData) {
+        throw new Error(`월운 데이터를 찾을 수 없습니다: ${year}년 ${month}월`);
+      }
+
+      return {
+        year,
+        month,
+        monthPillarChinese: calendarData.cd_hmganjee || '',
+        monthPillarKorean: calendarData.cd_kmganjee || '',
+        solarTerm: calendarData.cd_hterms ? {
+          termChinese: calendarData.cd_hterms,
+          termKorean: calendarData.cd_kterms || '',
+          termTime: calendarData.cd_terms_time || undefined
+        } : undefined,
+        dateInfo: {
+          solarYear: calendarData.cd_sy,
+          solarMonth: parseInt(calendarData.cd_sm),
+          solarDay: parseInt(calendarData.cd_sd),
+          lunarYear: calendarData.cd_ly,
+          lunarMonth: parseInt(calendarData.cd_lm),
+          lunarDay: parseInt(calendarData.cd_ld)
+        }
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`월운 조회 중 오류가 발생했습니다: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * 현재 월부터 시작하는 월운 리스트 조회
+   * @param count 조회할 월 수 (기본값: 12개월)
+   * @returns 월운 리스트
+   */
+  async getMonthlyFortuneList(count: number = 12): Promise<MonthlyFortuneList> {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1; // 0-based를 1-based로 변환
+    const currentDay = now.getDate();
+
+    const monthlyFortunes: MonthlyFortune[] = [];
+
+    for (let i = 0; i < count; i++) {
+      // 현재 월로부터 i개월 후 계산
+      const targetDate = new Date(currentYear, currentMonth - 1 + i, 1); // month는 0-based
+      const targetYear = targetDate.getFullYear();
+      const targetMonth = targetDate.getMonth() + 1; // 0-based를 1-based로 변환
+
+      try {
+        const fortune = await this.getMonthlyFortune(targetYear, targetMonth);
+        monthlyFortunes.push(fortune);
+      } catch (error) {
+        console.warn(`월운 조회 실패 ${targetYear}년 ${targetMonth}월:`, error);
+        // 에러가 발생해도 계속 진행
+      }
+    }
+
+    return {
+      baseDate: {
+        year: currentYear,
+        month: currentMonth,
+        day: currentDay
+      },
+      totalCount: monthlyFortunes.length,
+      monthlyFortunes
+    };
+  }
+
+
+
+  /**
+   * 월운 리스트를 보기 좋은 형태로 포맷팅합니다.
+   * @param fortuneList 월운 리스트
+   * @returns 포맷팅된 문자열
+   */
+  formatMonthlyFortuneList(fortuneList: MonthlyFortuneList): string {
+    const lines = [
+      `=== 월운(月運) 리스트 ===`,
+      `기준 날짜: ${fortuneList.baseDate.year}년 ${fortuneList.baseDate.month}월 ${fortuneList.baseDate.day}일`,
+      `총 ${fortuneList.totalCount}개월`,
+      '',
+      '** 월별 월운 정보 **'
+    ];
+
+    fortuneList.monthlyFortunes.forEach((fortune, index) => {
+      lines.push(
+        `${index + 1}. ${fortune.year}년 ${fortune.month}월: ${fortune.monthPillarChinese} (${fortune.monthPillarKorean})`
+      );
+      lines.push(`    └ 조회 기준: ${fortune.dateInfo.solarYear}년 ${fortune.dateInfo.solarMonth}월 ${fortune.dateInfo.solarDay}일`);
+      if (fortune.solarTerm) {
+        lines.push(`    └ 절기: ${fortune.solarTerm.termChinese} (${fortune.solarTerm.termKorean})`);
+      }
+    });
+
+    return lines.join('\n');
+  }
+
+  // ==================== 월운 계산 메소드 끝 ====================
+
+  // ==================== 연운(年運) 계산 관련 메소드 ====================
+
+  /**
+   * 연운(年運) 조회
+   * 특정 연도의 간지를 조회하여 연운 정보를 반환합니다.
+   * 연운은 입춘 기준으로 바뀌므로, 해당 년도의 3월 1일 데이터를 기준으로 년주 간지를 조회합니다.
+   * (1월 1일은 아직 전년도 연운일 수 있기 때문)
+   * @param year 조회할 연도
+   * @returns 연운 정보
+   */
+  async getYearlyFortune(year: number): Promise<YearlyFortune> {
+    if (!this.calendarDataRepository) {
+      throw new Error('CalendarDataRepository가 주입되지 않았습니다. 연운 조회 기능을 사용하려면 Repository를 주입해야 합니다.');
+    }
+
+    try {
+      // 해당 연도 6월 1일 데이터를 기준으로 년주 간지 조회
+      // (입춘이 확실히 지난 중간 시점을 사용하여 정확한 연운 확보)
+      const calendarData = await this.calendarDataRepository.findBySolarDate(year, 6, 1);
+      
+      if (!calendarData) {
+        throw new Error(`연운 데이터를 찾을 수 없습니다: ${year}년`);
+      }
+
+      return {
+        year,
+        yearPillarChinese: calendarData.cd_hyganjee || '',
+        yearPillarKorean: calendarData.cd_kyganjee || '',
+        dateInfo: {
+          solarYear: calendarData.cd_sy,
+          solarMonth: parseInt(calendarData.cd_sm),
+          solarDay: parseInt(calendarData.cd_sd),
+          lunarYear: calendarData.cd_ly,
+          lunarMonth: parseInt(calendarData.cd_lm),
+          lunarDay: parseInt(calendarData.cd_ld)
+        }
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`연운 조회 중 오류가 발생했습니다: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * 현재 년부터 시작하는 연운 리스트 조회
+   * @param count 조회할 년 수 (기본값: 10년)
+   * @returns 연운 리스트
+   */
+  async getYearlyFortuneList(count: number = 10): Promise<YearlyFortuneList> {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1; // 0-based를 1-based로 변환
+    const currentDay = now.getDate();
+
+    const yearlyFortunes: YearlyFortune[] = [];
+
+    for (let i = 0; i < count; i++) {
+      const targetYear = currentYear + i;
+
+      try {
+        const fortune = await this.getYearlyFortune(targetYear);
+        yearlyFortunes.push(fortune);
+      } catch (error) {
+        console.warn(`연운 조회 실패 ${targetYear}년:`, error);
+        // 에러가 발생해도 계속 진행
+      }
+    }
+
+    return {
+      baseDate: {
+        year: currentYear,
+        month: currentMonth,
+        day: currentDay
+      },
+      totalCount: yearlyFortunes.length,
+      yearlyFortunes
+    };
+  }
+
+
+
+  /**
+   * 연운 리스트를 보기 좋은 형태로 포맷팅합니다.
+   * @param fortuneList 연운 리스트
+   * @returns 포맷팅된 문자열
+   */
+  formatYearlyFortuneList(fortuneList: YearlyFortuneList): string {
+    const lines = [
+      `=== 연운(年運) 리스트 ===`,
+      `기준 날짜: ${fortuneList.baseDate.year}년 ${fortuneList.baseDate.month}월 ${fortuneList.baseDate.day}일`,
+      `총 ${fortuneList.totalCount}년`,
+      '',
+      '** 연별 연운 정보 **'
+    ];
+
+    fortuneList.yearlyFortunes.forEach((fortune, index) => {
+      lines.push(
+        `${index + 1}. ${fortune.year}년: ${fortune.yearPillarChinese} (${fortune.yearPillarKorean})`
+      );
+      lines.push(`    └ 조회 기준: ${fortune.dateInfo.solarYear}년 ${fortune.dateInfo.solarMonth}월 ${fortune.dateInfo.solarDay}일`);
+    });
+
+    return lines.join('\n');
+  }
+
+  // ==================== 연운 계산 메소드 끝 ====================
 }

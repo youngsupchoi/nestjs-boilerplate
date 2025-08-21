@@ -12,3 +12,5 @@ export { TimeCorrection, LocationInfo } from './time-correction.interface';
 export { SajuFromCalendar, SajuExtractionParams } from './saju-from-calendar.interface';
 export { ComprehensiveSaju, SajuAnalysisOptions } from './comprehensive-saju.interface';
 export { DaeunCalculationParams } from './daeun-calculation.interface';
+export { MonthlyFortune, MonthlyFortuneList } from './monthly-fortune.interface';
+export { YearlyFortune, YearlyFortuneList } from './yearly-fortune.interface';

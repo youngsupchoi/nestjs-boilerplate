@@ -4,6 +4,8 @@ import { SajuService } from './saju.service';
 import { SajuFromCalendar } from './interfaces/saju-from-calendar.interface';
 import { ComprehensiveSaju } from './interfaces/comprehensive-saju.interface';
 import { DaeunList } from './interfaces/daeun.interface';
+import { MonthlyFortune, MonthlyFortuneList } from './interfaces/monthly-fortune.interface';
+import { YearlyFortune, YearlyFortuneList } from './interfaces/yearly-fortune.interface';
 import { TenStarsInfo } from './interfaces/ten-stars.interface';
 import { TenStarsUtils } from './utils/ten-stars.utils';
 import { AuthGuard } from '../iam/login/decorators/auth-guard.decorator';
@@ -432,6 +434,124 @@ export class SajuController {
 
   // ==================== 대운 계산 API 끝 ====================
 
+  // ==================== 월운(月運) 조회 API ====================
+
+  /**
+   * 월운(月運) 리스트 조회 API
+   */
+  @Get('monthly-fortune')
+  @ApiOperation({ 
+    summary: '월운(月運) 리스트 조회',
+    description: '현재 월부터 시작하여 향후 여러 달의 월운 정보를 리스트로 반환합니다. 절기 기준으로 월주가 결정됩니다.'
+  })
+  @ApiQuery({ name: 'count', description: '조회할 월 수 (기본값: 12개월, 최대: 36개월)', type: Number, required: false })
+  @ApiResponse({
+    status: 200,
+    description: '월운 리스트 조회 성공',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        message: { type: 'string' },
+        data: { type: 'object' },
+        formatted: { type: 'string' }
+      }
+    }
+  })
+  @ApiResponse({ status: 400, description: '잘못된 요청 파라미터' })
+  @ApiResponse({ status: 500, description: '서버 내부 오류' })
+  async getMonthlyFortuneList(
+    @Query('count') count?: number,
+  ) {
+    try {
+      // count 기본값 및 제한 설정
+      const requestedCount = count || 12;
+      const validatedCount = Math.max(1, Math.min(36, requestedCount)); // 1-36 범위로 제한
+
+      const result = await this.sajuService.getMonthlyFortuneList(validatedCount);
+
+      return {
+        success: true,
+        message: `현재 월부터 ${result.totalCount}개월의 월운 리스트 조회가 성공적으로 완료되었습니다.`,
+        data: result,
+        formatted: this.sajuService.formatMonthlyFortuneList(result)
+      };
+    } catch (error: any) {
+      if (error.message?.includes('CalendarDataRepository가 주입되지 않았습니다')) {
+        throw new HttpException(
+          '만세력 데이터베이스 연결에 문제가 있습니다.',
+          HttpStatus.INTERNAL_SERVER_ERROR
+        );
+      }
+
+      throw new HttpException(
+        `월운 리스트 조회 중 오류가 발생했습니다: ${error.message || error}`,
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
+
+  // ==================== 월운 조회 API 끝 ====================
+
+  // ==================== 연운(年運) 조회 API ====================
+
+  /**
+   * 연운(年運) 리스트 조회 API
+   */
+  @Get('yearly-fortune')
+  @ApiOperation({ 
+    summary: '연운(年運) 리스트 조회',
+    description: '현재 년부터 시작하여 향후 여러 년의 연운 정보를 리스트로 반환합니다. 각 년도 1월 1일 데이터를 기준으로 년주 간지를 조회합니다.'
+  })
+  @ApiQuery({ name: 'count', description: '조회할 년 수 (기본값: 10년, 최대: 20년)', type: Number, required: false })
+  @ApiResponse({
+    status: 200,
+    description: '연운 리스트 조회 성공',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        message: { type: 'string' },
+        data: { type: 'object' },
+        formatted: { type: 'string' }
+      }
+    }
+  })
+  @ApiResponse({ status: 400, description: '잘못된 요청 파라미터' })
+  @ApiResponse({ status: 500, description: '서버 내부 오류' })
+  async getYearlyFortuneList(
+    @Query('count') count?: number,
+  ) {
+    try {
+      // count 기본값 및 제한 설정
+      const requestedCount = count || 10;
+      const validatedCount = Math.max(1, Math.min(20, requestedCount)); // 1-20 범위로 제한
+
+      const result = await this.sajuService.getYearlyFortuneList(validatedCount);
+
+      return {
+        success: true,
+        message: `현재 년부터 ${result.totalCount}년의 연운 리스트 조회가 성공적으로 완료되었습니다.`,
+        data: result,
+        formatted: this.sajuService.formatYearlyFortuneList(result)
+      };
+    } catch (error: any) {
+      if (error.message?.includes('CalendarDataRepository가 주입되지 않았습니다')) {
+        throw new HttpException(
+          '만세력 데이터베이스 연결에 문제가 있습니다.',
+          HttpStatus.INTERNAL_SERVER_ERROR
+        );
+      }
+
+      throw new HttpException(
+        `연운 리스트 조회 중 오류가 발생했습니다: ${error.message || error}`,
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
+
+  // ==================== 연운 조회 API 끝 ====================
+
   /**
    * 입력 값 검증 메소드
    */
@@ -471,6 +591,8 @@ export class SajuController {
       );
     }
   }
+
+
 
   /**
    * 성별 검증 메소드
