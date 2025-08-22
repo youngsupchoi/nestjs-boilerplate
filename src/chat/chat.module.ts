@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ChatController } from './chat.controller';
 import { ChatService } from './chat.service';
+import { PromptService } from './services/prompt.service';
 import { ChatMessage } from './entities/chat-message.entity';
 import { ChatSession } from './entities/chat-session.entity';
 import { UsersModule } from '@/users/users.module';
@@ -14,8 +15,8 @@ import { HttpModule } from '@nestjs/axios';
     HttpModule,
   ],
   controllers: [ChatController],
-  providers: [ChatService],
-  exports: [ChatService],
+  providers: [ChatService, PromptService],
+  exports: [ChatService, PromptService],
 })
 export class ChatModule {}
 

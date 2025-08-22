@@ -8,6 +8,7 @@ export { TenStarsInfo } from './ten-stars.interface';
 export { HiddenStems, SajuHiddenStems } from './hidden-stems.interface';
 export { TwelveLifeStagesInfo } from './twelve-life-stages.interface';
 export { TwelveSpiritsInfo } from './twelve-spirits.interface';
+export { TwelveSinsalInfo, TwelveSinsalResult, TWELVE_SINSAL_DESCRIPTIONS } from './twelve-sinsal.interface';
 export { TimeCorrection, LocationInfo } from './time-correction.interface';
 export { SajuFromCalendar, SajuExtractionParams } from './saju-from-calendar.interface';
 export { ComprehensiveSaju, SajuAnalysisOptions } from './comprehensive-saju.interface';

@@ -6,13 +6,20 @@ import { DaeunCalculationParams } from './interfaces/daeun-calculation.interface
 import { MonthlyFortune, MonthlyFortuneList } from './interfaces/monthly-fortune.interface';
 import { YearlyFortune, YearlyFortuneList } from './interfaces/yearly-fortune.interface';
 import { TenStarsInfo } from './interfaces/ten-stars.interface';
+import { TwelveLifeStagesInfo } from './interfaces/twelve-life-stages.interface';
+import { TwelveSinsalInfo, TwelveSinsalResult, TWELVE_SINSAL_DESCRIPTIONS } from './interfaces/twelve-sinsal.interface';
 import { HourPillarUtils } from './utils/hour-pillar.utils';
 import { TenStarsUtils } from './utils/ten-stars.utils';
+import { HiddenStemsUtils } from './utils/hidden-stems.utils';
 import { CalendarDataRepository } from './repositories/calendar-data.repository';
 import { HeavenlyStem, HEAVENLY_STEM_INFO } from './enums/heavenly-stem.enum';
 import { EarthlyBranch } from './enums/earthly-branch.enum';
 import { TenStars } from './enums/ten-stars.enum';
+import { TwelveLifeStages } from './enums/twelve-life-stages.enum';
 import { Gender } from './enums/gender.enum';
+import { TwelveSinsal, SAMHAP_GROUPS, TWELVE_SINSAL_ORDER } from './enums/twelve-sinsal.enum';
+import { TwelveLifeStagesUtils } from './utils/twelve-life-stages.utils';
+import { SajuHiddenStems, DetailedHiddenStems } from './interfaces/hidden-stems.interface';
 
 @Injectable()
 export class SajuService {
@@ -256,7 +263,7 @@ export class SajuService {
   /**
    * 한자 지지를 EarthlyBranch enum으로 변환합니다.
    */
-  private convertChineseToEarthlyBranch(chinese: string): EarthlyBranch {
+  convertChineseToEarthlyBranch(chinese: string): EarthlyBranch {
     const map: Record<string, EarthlyBranch> = {
       '子': EarthlyBranch.JA,
       '丑': EarthlyBranch.CHUK,
@@ -342,7 +349,60 @@ export class SajuService {
   }
 
   /**
-   * 십성 정보를 포함한 사주 정보를 반환합니다.
+   * 사주 팔자에서 지장간을 계산합니다.
+   */
+  calculateHiddenStems(saju: SajuFromCalendar): SajuHiddenStems {
+    try {
+      // 각 지지의 지장간을 계산
+      const yearBranch = this.convertChineseToEarthlyBranch(saju.yearPillar.earthlyBranch);
+      const monthBranch = this.convertChineseToEarthlyBranch(saju.monthPillar.earthlyBranch);
+      const dayBranch = this.convertChineseToEarthlyBranch(saju.dayPillar.earthlyBranch);
+      const hourBranch = this.convertChineseToEarthlyBranch(saju.hourPillar.earthlyBranch);
+
+      return {
+        year: HiddenStemsUtils.getHiddenStems(yearBranch),
+        month: HiddenStemsUtils.getHiddenStems(monthBranch),
+        day: HiddenStemsUtils.getHiddenStems(dayBranch),
+        hour: HiddenStemsUtils.getHiddenStems(hourBranch),
+      };
+    } catch (error) {
+      console.error('지장간 계산 중 오류:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`지장간 계산 중 오류가 발생했습니다: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * 사주 팔자에서 상세한 지장간 정보(일수 포함)를 계산합니다.
+   */
+  calculateDetailedHiddenStems(saju: SajuFromCalendar): {
+    year: DetailedHiddenStems;
+    month: DetailedHiddenStems;
+    day: DetailedHiddenStems;
+    hour: DetailedHiddenStems;
+  } {
+    try {
+      // 각 지지의 상세한 지장간을 계산
+      const yearBranch = this.convertChineseToEarthlyBranch(saju.yearPillar.earthlyBranch);
+      const monthBranch = this.convertChineseToEarthlyBranch(saju.monthPillar.earthlyBranch);
+      const dayBranch = this.convertChineseToEarthlyBranch(saju.dayPillar.earthlyBranch);
+      const hourBranch = this.convertChineseToEarthlyBranch(saju.hourPillar.earthlyBranch);
+
+      return {
+        year: HiddenStemsUtils.getDetailedHiddenStems(yearBranch),
+        month: HiddenStemsUtils.getDetailedHiddenStems(monthBranch),
+        day: HiddenStemsUtils.getDetailedHiddenStems(dayBranch),
+        hour: HiddenStemsUtils.getDetailedHiddenStems(hourBranch),
+      };
+    } catch (error) {
+      console.error('상세 지장간 계산 중 오류:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`상세 지장간 계산 중 오류가 발생했습니다: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * 십성과 지장간 정보를 포함한 사주 정보를 반환합니다.
    */
   async getSajuWithTenStars(
     year: number,
@@ -352,16 +412,29 @@ export class SajuService {
     minute: number = 0,
     isSolar: boolean = true,
     isLeapMonth: boolean = false,
-  ): Promise<SajuFromCalendar & { tenStars: TenStarsInfo }> {
+  ): Promise<SajuFromCalendar & { 
+    tenStars: TenStarsInfo; 
+    hiddenStems: SajuHiddenStems;
+    detailedHiddenStems: {
+      year: DetailedHiddenStems;
+      month: DetailedHiddenStems;
+      day: DetailedHiddenStems;
+      hour: DetailedHiddenStems;
+    };
+  }> {
     const basicSaju = await this.getSajuByDateTime(
       year, month, day, hour, minute, isSolar, isLeapMonth
     );
     
     const tenStars = this.calculateTenStars(basicSaju);
+    const hiddenStems = this.calculateHiddenStems(basicSaju);
+    const detailedHiddenStems = this.calculateDetailedHiddenStems(basicSaju);
     
     return {
       ...basicSaju,
       tenStars,
+      hiddenStems,
+      detailedHiddenStems,
     };
   }
 
@@ -799,4 +872,437 @@ export class SajuService {
   }
 
   // ==================== 연운 계산 메소드 끝 ====================
+
+  // ==================== 12운성(十二運星) 계산 관련 메소드 ====================
+
+  /**
+   * 사주 팔자에서 12운성을 계산합니다.
+   * 일간을 기준으로 각 지지의 12운성을 구합니다.
+   * @param saju 사주 정보
+   * @returns 12운성 정보
+   */
+  calculateTwelveLifeStages(saju: SajuFromCalendar): TwelveLifeStagesInfo {
+    try {
+      // 일간을 기준으로 설정 (일주의 천간)
+      const dayMaster = this.convertChineseToHeavenlyStem(saju.dayPillar.heavenlyStem);
+      
+      // 각 지지의 12운성 계산
+      const yearLifeStage = TwelveLifeStagesUtils.calculateLifeStage(
+        dayMaster, 
+        this.convertChineseToEarthlyBranch(saju.yearPillar.earthlyBranch)
+      );
+      
+      const monthLifeStage = TwelveLifeStagesUtils.calculateLifeStage(
+        dayMaster, 
+        this.convertChineseToEarthlyBranch(saju.monthPillar.earthlyBranch)
+      );
+      
+      const dayLifeStage = TwelveLifeStagesUtils.calculateLifeStage(
+        dayMaster, 
+        this.convertChineseToEarthlyBranch(saju.dayPillar.earthlyBranch)
+      );
+      
+      const hourLifeStage = TwelveLifeStagesUtils.calculateLifeStage(
+        dayMaster, 
+        this.convertChineseToEarthlyBranch(saju.hourPillar.earthlyBranch)
+      );
+
+      return {
+        year: yearLifeStage,
+        month: monthLifeStage,
+        day: dayLifeStage,
+        hour: hourLifeStage,
+      };
+    } catch (error) {
+      console.error('12운성 계산 중 오류:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`12운성 계산 중 오류가 발생했습니다: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * 특정 일간과 지지로 12운성을 계산하는 유틸리티 메소드
+   * @param dayStemChinese 일간 (한자)
+   * @param branchChinese 지지 (한자)
+   * @returns 12운성
+   */
+  calculateSingleTwelveLifeStage(dayStemChinese: string, branchChinese: string): TwelveLifeStages {
+    try {
+      const dayStem = this.convertChineseToHeavenlyStem(dayStemChinese);
+      const branch = this.convertChineseToEarthlyBranch(branchChinese);
+      
+      return TwelveLifeStagesUtils.calculateLifeStage(dayStem, branch);
+    } catch (error) {
+      console.error('12운성 계산 중 오류:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`12운성 계산 중 오류가 발생했습니다 (일간: ${dayStemChinese}, 지지: ${branchChinese}): ${errorMessage}`);
+    }
+  }
+
+  /**
+   * 12운성과 십성, 지장간 정보를 모두 포함한 사주 정보를 반환합니다.
+   */
+  async getSajuWithAllAnalysis(
+    year: number,
+    month: number,
+    day: number,
+    hour: number,
+    minute: number = 0,
+    isSolar: boolean = true,
+    isLeapMonth: boolean = false,
+  ): Promise<SajuFromCalendar & { 
+    tenStars: TenStarsInfo; 
+    hiddenStems: SajuHiddenStems;
+    twelveLifeStages: TwelveLifeStagesInfo;
+  }> {
+    const basicSaju = await this.getSajuByDateTime(
+      year, month, day, hour, minute, isSolar, isLeapMonth
+    );
+    
+    const tenStars = this.calculateTenStars(basicSaju);
+    const hiddenStems = this.calculateHiddenStems(basicSaju);
+    const twelveLifeStages = this.calculateTwelveLifeStages(basicSaju);
+    
+    return {
+      ...basicSaju,
+      tenStars,
+      hiddenStems,
+      twelveLifeStages,
+    };
+  }
+
+  /**
+   * 12운성 결과를 보기 좋은 형태로 포맷팅합니다.
+   * @param lifeStages 12운성 정보
+   * @param saju 사주 정보 (optional, 추가 정보 표시용)
+   * @returns 포맷팅된 문자열
+   */
+  formatTwelveLifeStages(lifeStages: TwelveLifeStagesInfo, saju?: SajuFromCalendar): string {
+    const lines = [
+      '=== 12운성(十二運星) 분석 ===',
+    ];
+
+    if (saju) {
+      lines.push(`일간 기준: ${saju.dayPillar.heavenlyStem} (${saju.dayPillar.ganzhiKorean.charAt(0)})`);
+      lines.push('');
+    }
+
+    lines.push('** 각 지지별 12운성 **');
+    
+    if (saju) {
+      lines.push(`연지 (${saju.yearPillar.earthlyBranch}): ${lifeStages.year} - ${TwelveLifeStagesUtils.getLifeStageMeaning(lifeStages.year)}`);
+      lines.push(`월지 (${saju.monthPillar.earthlyBranch}): ${lifeStages.month} - ${TwelveLifeStagesUtils.getLifeStageMeaning(lifeStages.month)}`);
+      lines.push(`일지 (${saju.dayPillar.earthlyBranch}): ${lifeStages.day} - ${TwelveLifeStagesUtils.getLifeStageMeaning(lifeStages.day)}`);
+      lines.push(`시지 (${saju.hourPillar.earthlyBranch}): ${lifeStages.hour} - ${TwelveLifeStagesUtils.getLifeStageMeaning(lifeStages.hour)}`);
+    } else {
+      lines.push(`연지: ${lifeStages.year} - ${TwelveLifeStagesUtils.getLifeStageMeaning(lifeStages.year)}`);
+      lines.push(`월지: ${lifeStages.month} - ${TwelveLifeStagesUtils.getLifeStageMeaning(lifeStages.month)}`);
+      lines.push(`일지: ${lifeStages.day} - ${TwelveLifeStagesUtils.getLifeStageMeaning(lifeStages.day)}`);
+      lines.push(`시지: ${lifeStages.hour} - ${TwelveLifeStagesUtils.getLifeStageMeaning(lifeStages.hour)}`);
+    }
+
+    return lines.join('\n');
+  }
+
+  // ==================== 12운성 계산 메소드 끝 ====================
+
+  // ==================== 12신살 계산 관련 메소드 ====================
+
+  /**
+   * 년지(띠)를 기준으로 12신살을 계산합니다.
+   * @param yearBranch 년지 (EarthlyBranch enum)
+   * @returns 12신살 정보
+   */
+  calculateTwelveSinsal(yearBranch: EarthlyBranch): TwelveSinsalInfo {
+    // 12지 배열 (한글)
+    const earthlyBranches = [
+      EarthlyBranch.JA,    // 자
+      EarthlyBranch.CHUK,  // 축
+      EarthlyBranch.IN,    // 인
+      EarthlyBranch.MYO,   // 묘
+      EarthlyBranch.JIN,   // 진
+      EarthlyBranch.SA,    // 사
+      EarthlyBranch.O,     // 오
+      EarthlyBranch.MI,    // 미
+      EarthlyBranch.SHIN,  // 신
+      EarthlyBranch.YU,    // 유
+      EarthlyBranch.SUL,   // 술
+      EarthlyBranch.HAE    // 해
+    ];
+
+    // 년지에 따른 삼합 그룹 찾기
+    let samhapGroup: string | null = null;
+    let jangseonsalBranch: EarthlyBranch | null = null;
+
+    if ([EarthlyBranch.SHIN, EarthlyBranch.JA, EarthlyBranch.JIN].includes(yearBranch)) {
+      samhapGroup = '신자진';
+      jangseonsalBranch = EarthlyBranch.JA; // 자
+    } else if ([EarthlyBranch.HAE, EarthlyBranch.MYO, EarthlyBranch.MI].includes(yearBranch)) {
+      samhapGroup = '해묘미';
+      jangseonsalBranch = EarthlyBranch.MYO; // 묘
+    } else if ([EarthlyBranch.IN, EarthlyBranch.O, EarthlyBranch.SUL].includes(yearBranch)) {
+      samhapGroup = '인오술';
+      jangseonsalBranch = EarthlyBranch.O; // 오
+    } else if ([EarthlyBranch.SA, EarthlyBranch.YU, EarthlyBranch.CHUK].includes(yearBranch)) {
+      samhapGroup = '사유축';
+      jangseonsalBranch = EarthlyBranch.YU; // 유
+    }
+
+    if (!samhapGroup || !jangseonsalBranch) {
+      throw new Error(`유효하지 않은 년지입니다: ${yearBranch}`);
+    }
+
+    // 장성살 시작 인덱스 찾기
+    const startIndex = earthlyBranches.indexOf(jangseonsalBranch);
+    
+    if (startIndex === -1) {
+      throw new Error(`장성살 지지를 찾을 수 없습니다: ${jangseonsalBranch}`);
+    }
+
+    // 12신살 매핑 생성
+    const sinsalMapping: Record<EarthlyBranch, TwelveSinsal> = {} as Record<EarthlyBranch, TwelveSinsal>;
+    
+    for (let i = 0; i < 12; i++) {
+      const branchIndex = (startIndex + i) % 12;
+      const branch = earthlyBranches[branchIndex];
+      const sinsal = TWELVE_SINSAL_ORDER[i];
+      sinsalMapping[branch] = sinsal;
+    }
+
+    // 년지별 한자 매핑
+    const branchChineseMap: Record<EarthlyBranch, string> = {
+      [EarthlyBranch.JA]: '子',
+      [EarthlyBranch.CHUK]: '丑', 
+      [EarthlyBranch.IN]: '寅',
+      [EarthlyBranch.MYO]: '卯',
+      [EarthlyBranch.JIN]: '辰',
+      [EarthlyBranch.SA]: '巳',
+      [EarthlyBranch.O]: '午',
+      [EarthlyBranch.MI]: '未',
+      [EarthlyBranch.SHIN]: '申',
+      [EarthlyBranch.YU]: '酉',
+      [EarthlyBranch.SUL]: '戌',
+      [EarthlyBranch.HAE]: '亥'
+    };
+
+    return {
+      yearBranch,
+      yearBranchKorean: yearBranch,
+      yearBranchChinese: branchChineseMap[yearBranch],
+      samhapGroup,
+      jangseonsalBranch,
+      sinsalMapping
+    };
+  }
+
+  /**
+   * 12신살 계산 결과를 완전한 형태로 반환합니다.
+   * @param yearBranch 년지 (EarthlyBranch enum)
+   * @returns 완전한 12신살 결과
+   */
+  calculateTwelveSinsalResult(yearBranch: EarthlyBranch): TwelveSinsalResult {
+    const sinsalInfo = this.calculateTwelveSinsal(yearBranch);
+    
+    // 신살별 해당 지지들 그룹핑
+    const sinsalByType: Record<TwelveSinsal, EarthlyBranch[]> = {} as Record<TwelveSinsal, EarthlyBranch[]>;
+    
+    // 초기화
+    TWELVE_SINSAL_ORDER.forEach(sinsal => {
+      sinsalByType[sinsal] = [];
+    });
+    
+    // 매핑
+    Object.entries(sinsalInfo.sinsalMapping).forEach(([branchKey, sinsal]) => {
+      const branch = branchKey as EarthlyBranch;
+      sinsalByType[sinsal].push(branch);
+    });
+
+    // 지지별 신살 설명
+    const descriptions: Record<EarthlyBranch, { sinsal: TwelveSinsal; description: string }> = {} as Record<EarthlyBranch, { sinsal: TwelveSinsal; description: string }>;
+    
+    Object.entries(sinsalInfo.sinsalMapping).forEach(([branchKey, sinsal]) => {
+      const branch = branchKey as EarthlyBranch;
+      descriptions[branch] = {
+        sinsal,
+        description: TWELVE_SINSAL_DESCRIPTIONS[sinsal]
+      };
+    });
+
+    return {
+      sinsalInfo,
+      sinsalByType,
+      descriptions
+    };
+  }
+
+  /**
+   * 사주로부터 각 지지별 12신살을 계산합니다.
+   * @param saju 사주 정보
+   * @returns 각 지지별 12신살 결과
+   */
+  calculateTwelveSinsalFromSaju(saju: SajuFromCalendar): {
+    year: TwelveSinsalResult;
+    month: TwelveSinsalResult;
+    day: TwelveSinsalResult;
+    hour: TwelveSinsalResult;
+  } {
+    const yearBranch = this.convertChineseToEarthlyBranch(saju.yearPillar.earthlyBranch);
+    const monthBranch = this.convertChineseToEarthlyBranch(saju.monthPillar.earthlyBranch);
+    const dayBranch = this.convertChineseToEarthlyBranch(saju.dayPillar.earthlyBranch);
+    const hourBranch = this.convertChineseToEarthlyBranch(saju.hourPillar.earthlyBranch);
+
+    return {
+      year: this.calculateTwelveSinsalResult(yearBranch),
+      month: this.calculateTwelveSinsalResult(monthBranch),
+      day: this.calculateTwelveSinsalResult(dayBranch),
+      hour: this.calculateTwelveSinsalResult(hourBranch),
+    };
+  }
+
+  /**
+   * 12신살 결과를 보기 좋은 형태로 포맷팅합니다.
+   * @param result 12신살 결과
+   * @returns 포맷팅된 문자열
+   */
+  formatTwelveSinsalResult(result: TwelveSinsalResult): string {
+    const { sinsalInfo, sinsalByType, descriptions } = result;
+    
+    const lines = [
+      '=== 12신살 계산 결과 ===',
+      `기준지: ${sinsalInfo.yearBranchChinese} (${sinsalInfo.yearBranchKorean})`,
+      `삼합 그룹: ${sinsalInfo.samhapGroup}`,
+      `장성살 위치: ${sinsalInfo.jangseonsalBranch}`,
+      '',
+      '=== 지지별 신살 정보 ===',
+    ];
+
+    // 12지 순서대로 정렬하여 출력
+    const earthlyBranches = [
+      EarthlyBranch.JA, EarthlyBranch.CHUK, EarthlyBranch.IN, EarthlyBranch.MYO,
+      EarthlyBranch.JIN, EarthlyBranch.SA, EarthlyBranch.O, EarthlyBranch.MI,
+      EarthlyBranch.SHIN, EarthlyBranch.YU, EarthlyBranch.SUL, EarthlyBranch.HAE
+    ];
+
+    earthlyBranches.forEach(branch => {
+      const info = descriptions[branch];
+      if (info) {
+        lines.push(`${branch}: ${info.sinsal} - ${info.description}`);
+      }
+    });
+
+    lines.push('');
+    lines.push('=== 신살별 해당 지지 ===');
+
+    TWELVE_SINSAL_ORDER.forEach(sinsal => {
+      const branches = sinsalByType[sinsal];
+      if (branches.length > 0) {
+        lines.push(`${sinsal}: ${branches.join(', ')}`);
+      }
+    });
+
+    return lines.join('\n');
+  }
+
+  /**
+   * 각 지지별 12신살 결과를 보기 좋은 형태로 포맷팅합니다.
+   * @param results 각 지지별 12신살 결과
+   * @param saju 사주 정보 (선택사항)
+   * @returns 포맷팅된 문자열
+   */
+  formatAllTwelveSinsalResults(results: {
+    year: TwelveSinsalResult;
+    month: TwelveSinsalResult;
+    day: TwelveSinsalResult;
+    hour: TwelveSinsalResult;
+  }, saju?: SajuFromCalendar): string {
+    const lines = [
+      '=== 사주 12신살 종합 분석 ===',
+    ];
+
+    if (saju) {
+      lines.push(`사주: ${saju.yearPillar.ganzhi} ${saju.monthPillar.ganzhi} ${saju.dayPillar.ganzhi} ${saju.hourPillar.ganzhi}`);
+      lines.push('');
+    }
+
+    // 각 지지에서 나타나는 신살들
+    const branchChineseMap: Record<EarthlyBranch, string> = {
+      [EarthlyBranch.JA]: '子', [EarthlyBranch.CHUK]: '丑', [EarthlyBranch.IN]: '寅', [EarthlyBranch.MYO]: '卯',
+      [EarthlyBranch.JIN]: '辰', [EarthlyBranch.SA]: '巳', [EarthlyBranch.O]: '午', [EarthlyBranch.MI]: '未',
+      [EarthlyBranch.SHIN]: '申', [EarthlyBranch.YU]: '酉', [EarthlyBranch.SUL]: '戌', [EarthlyBranch.HAE]: '亥'
+    };
+
+    // 각 기둥별 신살 정보
+    if (saju) {
+      const yearBranch = this.convertChineseToEarthlyBranch(saju.yearPillar.earthlyBranch);
+      const monthBranch = this.convertChineseToEarthlyBranch(saju.monthPillar.earthlyBranch);
+      const dayBranch = this.convertChineseToEarthlyBranch(saju.dayPillar.earthlyBranch);
+      const hourBranch = this.convertChineseToEarthlyBranch(saju.hourPillar.earthlyBranch);
+
+      lines.push('=== 각 기둥에서 받는 신살 ===');
+      lines.push(`연주 ${saju.yearPillar.ganzhi}: ${this.getBranchSinsalInfo(yearBranch, results)}`);
+      lines.push(`월주 ${saju.monthPillar.ganzhi}: ${this.getBranchSinsalInfo(monthBranch, results)}`);
+      lines.push(`일주 ${saju.dayPillar.ganzhi}: ${this.getBranchSinsalInfo(dayBranch, results)}`);
+      lines.push(`시주 ${saju.hourPillar.ganzhi}: ${this.getBranchSinsalInfo(hourBranch, results)}`);
+      lines.push('');
+    }
+
+    // 각 지지 기준별 상세 정보
+    lines.push('=== 지지별 12신살 상세 ===');
+    
+    if (saju) {
+      lines.push(`\n** 연지 (${saju.yearPillar.earthlyBranch}) 기준 **`);
+      lines.push(this.formatTwelveSinsalResult(results.year).replace('=== 12신살 계산 결과 ===\n', ''));
+      
+      lines.push(`\n** 월지 (${saju.monthPillar.earthlyBranch}) 기준 **`);
+      lines.push(this.formatTwelveSinsalResult(results.month).replace('=== 12신살 계산 결과 ===\n', ''));
+      
+      lines.push(`\n** 일지 (${saju.dayPillar.earthlyBranch}) 기준 **`);
+      lines.push(this.formatTwelveSinsalResult(results.day).replace('=== 12신살 계산 결과 ===\n', ''));
+      
+      lines.push(`\n** 시지 (${saju.hourPillar.earthlyBranch}) 기준 **`);
+      lines.push(this.formatTwelveSinsalResult(results.hour).replace('=== 12신살 계산 결과 ===\n', ''));
+    }
+
+    return lines.join('\n');
+  }
+
+  /**
+   * 특정 지지가 각 기준에서 받는 신살 정보를 가져옵니다.
+   */
+  private getBranchSinsalInfo(targetBranch: EarthlyBranch, results: {
+    year: TwelveSinsalResult;
+    month: TwelveSinsalResult;
+    day: TwelveSinsalResult;
+    hour: TwelveSinsalResult;
+  }): string {
+    const sinsals: string[] = [];
+
+    // 연지 기준에서 받는 신살
+    const yearSinsal = results.year.descriptions[targetBranch];
+    if (yearSinsal) {
+      sinsals.push(`연지 기준: ${yearSinsal.sinsal}`);
+    }
+
+    // 월지 기준에서 받는 신살
+    const monthSinsal = results.month.descriptions[targetBranch];
+    if (monthSinsal) {
+      sinsals.push(`월지 기준: ${monthSinsal.sinsal}`);
+    }
+
+    // 일지 기준에서 받는 신살
+    const daySinsal = results.day.descriptions[targetBranch];
+    if (daySinsal) {
+      sinsals.push(`일지 기준: ${daySinsal.sinsal}`);
+    }
+
+    // 시지 기준에서 받는 신살
+    const hourSinsal = results.hour.descriptions[targetBranch];
+    if (hourSinsal) {
+      sinsals.push(`시지 기준: ${hourSinsal.sinsal}`);
+    }
+
+    return sinsals.length > 0 ? sinsals.join(' | ') : '해당 없음';
+  }
+
+  // ==================== 12신살 계산 메소드 끝 ====================
 }

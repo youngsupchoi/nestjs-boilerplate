@@ -7,7 +7,13 @@ import { DaeunList } from './interfaces/daeun.interface';
 import { MonthlyFortune, MonthlyFortuneList } from './interfaces/monthly-fortune.interface';
 import { YearlyFortune, YearlyFortuneList } from './interfaces/yearly-fortune.interface';
 import { TenStarsInfo } from './interfaces/ten-stars.interface';
+import { TwelveLifeStagesInfo } from './interfaces/twelve-life-stages.interface';
+import { TwelveSinsalResult } from './interfaces/twelve-sinsal.interface';
+import { SajuHiddenStems, DetailedHiddenStems } from './interfaces/hidden-stems.interface';
 import { TenStarsUtils } from './utils/ten-stars.utils';
+import { TwelveLifeStagesUtils } from './utils/twelve-life-stages.utils';
+import { HiddenStemsUtils } from './utils/hidden-stems.utils';
+import { EarthlyBranch } from './enums/earthly-branch.enum';
 import { AuthGuard } from '../iam/login/decorators/auth-guard.decorator';
 import { AuthType } from '../iam/login/enums/auth-type.enum';
 import { Gender } from './enums/gender.enum';
@@ -19,12 +25,12 @@ export class SajuController {
   constructor(private readonly sajuService: SajuService) {}
 
   /**
-   * 만세력 기반 사주 추출 API (십성 정보 포함)
+   * 만세력 기반 사주 추출 API (십성, 지장간, 12신살 정보 포함)
    */
   @Get('extract')
   @ApiOperation({ 
-    summary: '만세력 기반 사주 추출 (십성 포함)',
-    description: '생년월일시를 입력받아 만세력 데이터베이스에서 사주 정보와 십성을 추출합니다. 일간을 기준으로 각 문자의 십성을 계산하여 함께 반환합니다.'
+    summary: '만세력 기반 사주 추출 (십성, 지장간, 12운성, 12신살 포함)',
+    description: '생년월일시를 입력받아 만세력 데이터베이스에서 사주 정보와 십성, 지장간, 12운성, 12신살을 추출합니다. 일간을 기준으로 각 문자의 십성을 계산하고, 각 지지의 지장간(本氣, 中氣, 餘氣), 12운성(장생, 목욕, 관대 등), 그리고 년지 기준 12신살을 함께 반환합니다.'
   })
   @ApiQuery({ name: 'year', description: '년도 (1900-2100)', type: Number })
   @ApiQuery({ name: 'month', description: '월 (1-12)', type: Number })
@@ -61,6 +67,7 @@ export class SajuController {
       // 입력 값 검증
       this.validateInput(year, month, day, hour, minute);
 
+      // 기본 사주 정보 및 십성, 지장간 추출
       const result = await this.sajuService.getSajuWithTenStars(
         year,
         month,
@@ -71,11 +78,24 @@ export class SajuController {
         isLeapMonth || false
       );
 
+      // 12운성 정보 계산
+      const twelveLifeStages = this.sajuService.calculateTwelveLifeStages(result);
+
+      // 12신살 정보 계산
+      const twelveSinsal = this.sajuService.calculateTwelveSinsalFromSaju(result);
+
+      // 확장된 결과 객체 생성
+      const extendedResult = {
+        ...result,
+        twelveLifeStages,
+        twelveSinsal
+      };
+
       return {
         success: true,
-        message: '사주 추출이 성공적으로 완료되었습니다. (십성 정보 포함)',
-        data: result,
-        formatted: this.formatSajuWithTenStars(result)
+        message: '사주 추출이 성공적으로 완료되었습니다. (십성, 지장간, 12운성, 12신살 정보 포함)',
+        data: extendedResult,
+        formatted: this.formatSajuWithTenStarsLifeStagesAndSinsal(extendedResult)
       };
     } catch (error: any) {
       if (error.message?.includes('만세력 데이터에서 해당 날짜를 찾을 수 없습니다')) {
@@ -326,9 +346,18 @@ export class SajuController {
   }
 
   /**
-   * 십성 정보를 포함한 사주 정보 포맷팅 메소드
+   * 십성과 지장간 정보를 포함한 사주 정보 포맷팅 메소드
    */
-  private formatSajuWithTenStars(saju: SajuFromCalendar & { tenStars: TenStarsInfo }): string {
+  private formatSajuWithTenStars(saju: SajuFromCalendar & { 
+    tenStars: TenStarsInfo; 
+    hiddenStems: SajuHiddenStems;
+    detailedHiddenStems: {
+      year: DetailedHiddenStems;
+      month: DetailedHiddenStems;
+      day: DetailedHiddenStems;
+      hour: DetailedHiddenStems;
+    };
+  }): string {
     const basicFormatted = this.sajuService.formatSajuFromCalendar(saju);
     
     const tenStarsLines = [
@@ -347,7 +376,122 @@ export class SajuController {
       `시지: ${saju.hourPillar.earthlyBranch} → ${saju.tenStars.earthlyBranches.hour} (${TenStarsUtils.getTenStarMeaning(saju.tenStars.earthlyBranches.hour)})`,
     ];
 
-    return basicFormatted + '\n' + tenStarsLines.join('\n');
+    const hiddenStemsLines = [
+      '',
+      '=== 지장간 (地藏干) 정보 ===',
+      `연지 ${saju.yearPillar.earthlyBranch}: ${HiddenStemsUtils.formatHiddenStems(saju.hiddenStems.year)}`,
+      `  └ ${HiddenStemsUtils.formatDetailedHiddenStems(saju.detailedHiddenStems.year)}`,
+      `월지 ${saju.monthPillar.earthlyBranch}: ${HiddenStemsUtils.formatHiddenStems(saju.hiddenStems.month)}`,
+      `  └ ${HiddenStemsUtils.formatDetailedHiddenStems(saju.detailedHiddenStems.month)}`,
+      `일지 ${saju.dayPillar.earthlyBranch}: ${HiddenStemsUtils.formatHiddenStems(saju.hiddenStems.day)}`,
+      `  └ ${HiddenStemsUtils.formatDetailedHiddenStems(saju.detailedHiddenStems.day)}`,
+      `시지 ${saju.hourPillar.earthlyBranch}: ${HiddenStemsUtils.formatHiddenStems(saju.hiddenStems.hour)}`,
+      `  └ ${HiddenStemsUtils.formatDetailedHiddenStems(saju.detailedHiddenStems.hour)}`,
+    ];
+
+    return basicFormatted + '\n' + tenStarsLines.join('\n') + '\n' + hiddenStemsLines.join('\n');
+  }
+
+     /**
+    * 십성, 지장간, 12운성, 12신살 정보를 모두 포함한 사주 정보 포맷팅 메소드
+    */
+   private formatSajuWithTenStarsLifeStagesAndSinsal(saju: SajuFromCalendar & { 
+     tenStars: TenStarsInfo; 
+     hiddenStems: SajuHiddenStems;
+     twelveLifeStages: TwelveLifeStagesInfo;
+     twelveSinsal: {
+       year: TwelveSinsalResult;
+       month: TwelveSinsalResult;
+       day: TwelveSinsalResult;
+       hour: TwelveSinsalResult;
+     };
+   }): string {
+     // 기본 사주 포맷
+     const basicFormatted = this.sajuService.formatSajuFromCalendar(saju);
+     
+     // 십성 포맷
+     const tenStarsLines = [
+       '',
+       '=== 십성 (十星) 정보 ===',
+       '** 천간 십성 **',
+       `연간: ${saju.yearPillar.heavenlyStem} → ${saju.tenStars.heavenlyStems.year} (${TenStarsUtils.getTenStarMeaning(saju.tenStars.heavenlyStems.year)})`,
+       `월간: ${saju.monthPillar.heavenlyStem} → ${saju.tenStars.heavenlyStems.month} (${TenStarsUtils.getTenStarMeaning(saju.tenStars.heavenlyStems.month)})`,
+       `일간: ${saju.dayPillar.heavenlyStem} → ${saju.tenStars.heavenlyStems.day} ⭐`,
+       `시간: ${saju.hourPillar.heavenlyStem} → ${saju.tenStars.heavenlyStems.hour} (${TenStarsUtils.getTenStarMeaning(saju.tenStars.heavenlyStems.hour)})`,
+       '',
+       '** 지지 십성 (지장간 본기 기준) **',
+       `연지: ${saju.yearPillar.earthlyBranch} → ${saju.tenStars.earthlyBranches.year} (${TenStarsUtils.getTenStarMeaning(saju.tenStars.earthlyBranches.year)})`,
+       `월지: ${saju.monthPillar.earthlyBranch} → ${saju.tenStars.earthlyBranches.month} (${TenStarsUtils.getTenStarMeaning(saju.tenStars.earthlyBranches.month)})`,
+       `일지: ${saju.dayPillar.earthlyBranch} → ${saju.tenStars.earthlyBranches.day} (${TenStarsUtils.getTenStarMeaning(saju.tenStars.earthlyBranches.day)})`,
+       `시지: ${saju.hourPillar.earthlyBranch} → ${saju.tenStars.earthlyBranches.hour} (${TenStarsUtils.getTenStarMeaning(saju.tenStars.earthlyBranches.hour)})`,
+     ];
+
+     // 지장간 포맷
+     const hiddenStemsLines = [
+       '',
+       '=== 지장간 (地藏干) 정보 ===',
+       `연지 ${saju.yearPillar.earthlyBranch}: ${HiddenStemsUtils.formatHiddenStems(saju.hiddenStems.year)}`,
+       `월지 ${saju.monthPillar.earthlyBranch}: ${HiddenStemsUtils.formatHiddenStems(saju.hiddenStems.month)}`,
+       `일지 ${saju.dayPillar.earthlyBranch}: ${HiddenStemsUtils.formatHiddenStems(saju.hiddenStems.day)}`,
+       `시지 ${saju.hourPillar.earthlyBranch}: ${HiddenStemsUtils.formatHiddenStems(saju.hiddenStems.hour)}`,
+     ];
+
+     // 12운성 포맷
+     const twelveLifeStagesFormatted = this.sajuService.formatTwelveLifeStages(saju.twelveLifeStages, saju);
+
+     // 12신살 포맷 (각 지지별)
+     const sinsalFormatted = this.sajuService.formatAllTwelveSinsalResults(saju.twelveSinsal, saju);
+
+     return basicFormatted + '\n' + tenStarsLines.join('\n') + '\n' + hiddenStemsLines.join('\n') + '\n\n' + twelveLifeStagesFormatted + '\n\n' + sinsalFormatted;
+   }
+
+   /**
+    * 십성, 지장간, 12신살 정보를 모두 포함한 사주 정보 포맷팅 메소드
+    */
+   private formatSajuWithTenStarsAndSinsal(saju: SajuFromCalendar & { 
+     tenStars: TenStarsInfo; 
+     hiddenStems: SajuHiddenStems;
+     twelveSinsal: {
+       year: TwelveSinsalResult;
+       month: TwelveSinsalResult;
+       day: TwelveSinsalResult;
+       hour: TwelveSinsalResult;
+     };
+   }): string {
+    // 기본 사주 포맷
+    const basicFormatted = this.sajuService.formatSajuFromCalendar(saju);
+    
+    // 십성 포맷
+    const tenStarsLines = [
+      '',
+      '=== 십성 (十星) 정보 ===',
+      '** 천간 십성 **',
+      `연간: ${saju.yearPillar.heavenlyStem} → ${saju.tenStars.heavenlyStems.year} (${TenStarsUtils.getTenStarMeaning(saju.tenStars.heavenlyStems.year)})`,
+      `월간: ${saju.monthPillar.heavenlyStem} → ${saju.tenStars.heavenlyStems.month} (${TenStarsUtils.getTenStarMeaning(saju.tenStars.heavenlyStems.month)})`,
+      `일간: ${saju.dayPillar.heavenlyStem} → ${saju.tenStars.heavenlyStems.day} ⭐`,
+      `시간: ${saju.hourPillar.heavenlyStem} → ${saju.tenStars.heavenlyStems.hour} (${TenStarsUtils.getTenStarMeaning(saju.tenStars.heavenlyStems.hour)})`,
+      '',
+      '** 지지 십성 (지장간 본기 기준) **',
+      `연지: ${saju.yearPillar.earthlyBranch} → ${saju.tenStars.earthlyBranches.year} (${TenStarsUtils.getTenStarMeaning(saju.tenStars.earthlyBranches.year)})`,
+      `월지: ${saju.monthPillar.earthlyBranch} → ${saju.tenStars.earthlyBranches.month} (${TenStarsUtils.getTenStarMeaning(saju.tenStars.earthlyBranches.month)})`,
+      `일지: ${saju.dayPillar.earthlyBranch} → ${saju.tenStars.earthlyBranches.day} (${TenStarsUtils.getTenStarMeaning(saju.tenStars.earthlyBranches.day)})`,
+      `시지: ${saju.hourPillar.earthlyBranch} → ${saju.tenStars.earthlyBranches.hour} (${TenStarsUtils.getTenStarMeaning(saju.tenStars.earthlyBranches.hour)})`,
+    ];
+
+    // 지장간 포맷
+    const hiddenStemsLines = [
+      '',
+      '=== 지장간 (地藏干) 정보 ===',
+      `연지 ${saju.yearPillar.earthlyBranch}: ${HiddenStemsUtils.formatHiddenStems(saju.hiddenStems.year)}`,
+      `월지 ${saju.monthPillar.earthlyBranch}: ${HiddenStemsUtils.formatHiddenStems(saju.hiddenStems.month)}`,
+      `일지 ${saju.dayPillar.earthlyBranch}: ${HiddenStemsUtils.formatHiddenStems(saju.hiddenStems.day)}`,
+      `시지 ${saju.hourPillar.earthlyBranch}: ${HiddenStemsUtils.formatHiddenStems(saju.hiddenStems.hour)}`,
+    ];
+
+         // 12신살 포맷 (각 지지별)
+     const sinsalFormatted = this.sajuService.formatAllTwelveSinsalResults(saju.twelveSinsal, saju);
+
+     return basicFormatted + '\n' + tenStarsLines.join('\n') + '\n' + hiddenStemsLines.join('\n') + '\n\n' + sinsalFormatted;
   }
 
   // ==================== 대운(大運) 계산 API ====================
@@ -606,5 +750,360 @@ export class SajuController {
     }
   }
 
+  /**
+   * 사주 12운성 계산 API
+   */
+  @Get('twelve-life-stages')
+  @ApiOperation({ 
+    summary: '사주 12운성 계산',
+    description: '생년월일시를 입력받아 사주의 12운성을 계산합니다. 일간을 기준으로 각 지지의 12운성(장생, 목욕, 관대, 임관, 제왕, 쇠, 병, 사, 묘, 절, 태, 양)을 구합니다.'
+  })
+  @ApiQuery({ name: 'year', description: '년도 (1900-2100)', type: Number })
+  @ApiQuery({ name: 'month', description: '월 (1-12)', type: Number })
+  @ApiQuery({ name: 'day', description: '일 (1-31)', type: Number })
+  @ApiQuery({ name: 'hour', description: '시간 (0-23)', type: Number })
+  @ApiQuery({ name: 'minute', description: '분 (0-59)', type: Number, required: false })
+  @ApiQuery({ name: 'isSolar', description: '양력 여부 (true: 양력, false: 음력)', type: Boolean, required: false })
+  @ApiQuery({ name: 'isLeapMonth', description: '윤달 여부 (음력인 경우만)', type: Boolean, required: false })
+  @ApiResponse({
+    status: 200,
+    description: '12운성 계산 성공',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        message: { type: 'string' },
+        data: { type: 'object' },
+        formatted: { type: 'string' }
+      }
+    }
+  })
+  @ApiResponse({ status: 400, description: '잘못된 요청 파라미터' })
+  @ApiResponse({ status: 500, description: '서버 오류' })
+  async getTwelveLifeStages(
+    @Query('year', ParseIntPipe) year: number,
+    @Query('month', ParseIntPipe) month: number,
+    @Query('day', ParseIntPipe) day: number,
+    @Query('hour', ParseIntPipe) hour: number,
+    @Query('minute') minute?: number,
+    @Query('isSolar') isSolar?: boolean,
+    @Query('isLeapMonth') isLeapMonth?: boolean
+  ) {
+    try {
+      // 파라미터 검증
+      this.validateInput(year, month, day, hour, minute);
 
+      // 기본값 설정
+      const validMinute = minute ?? 0;
+      const validIsSolar = isSolar ?? true;
+      const validIsLeapMonth = isLeapMonth ?? false;
+
+      // 사주 정보 추출
+      const saju = await this.sajuService.getSajuByDateTime(
+        year, month, day, hour, validMinute, validIsSolar, validIsLeapMonth
+      );
+
+      // 12운성 계산
+      const twelveLifeStages = this.sajuService.calculateTwelveLifeStages(saju);
+
+      // 포맷팅된 결과
+      const formatted = this.sajuService.formatTwelveLifeStages(twelveLifeStages, saju);
+
+      return {
+        success: true,
+        message: '12운성 계산이 완료되었습니다.',
+        data: {
+          basicSaju: saju,
+          twelveLifeStages,
+        },
+        formatted
+      };
+    } catch (error) {
+      console.error('12운성 계산 오류:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new HttpException(
+        `12운성 계산 중 오류가 발생했습니다: ${errorMessage}`,
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
+
+  /**
+   * 단일 12운성 계산 API
+   */
+  @Get('calculate-single-life-stage')
+  @ApiOperation({ 
+    summary: '단일 12운성 계산',
+    description: '일간과 지지를 직접 입력받아 12운성을 계산하는 유틸리티 API입니다. 예: 일간 甲, 지지 寅 → 임관'
+  })
+  @ApiQuery({ name: 'dayStem', description: '일간 (천간 한자: 甲乙丙丁戊己庚辛壬癸)', type: String })
+  @ApiQuery({ name: 'branch', description: '지지 (지지 한자: 子丑寅卯辰巳午未申酉戌亥)', type: String })
+  @ApiResponse({
+    status: 200,
+    description: '12운성 계산 성공',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        message: { type: 'string' },
+        data: { type: 'object' }
+      }
+    }
+  })
+  @ApiResponse({ status: 400, description: '잘못된 요청 파라미터' })
+  @ApiResponse({ status: 500, description: '서버 오류' })
+  async calculateSingleLifeStage(
+    @Query('dayStem') dayStem: string,
+    @Query('branch') branch: string
+  ) {
+    try {
+      if (!dayStem || !branch) {
+        throw new HttpException(
+          '일간과 지지를 모두 입력해주세요.',
+          HttpStatus.BAD_REQUEST
+        );
+      }
+
+      // 12운성 계산
+      const lifeStage = this.sajuService.calculateSingleTwelveLifeStage(dayStem, branch);
+
+      // 12운성 의미
+      const meaning = TwelveLifeStagesUtils.getLifeStageMeaning(lifeStage);
+
+      return {
+        success: true,
+        message: '12운성 계산이 완료되었습니다.',
+        data: {
+          dayStem,
+          branch,
+          lifeStage,
+          meaning
+        }
+      };
+    } catch (error) {
+      console.error('단일 12운성 계산 오류:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new HttpException(
+        `12운성 계산 중 오류가 발생했습니다: ${errorMessage}`,
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
+
+  /**
+   * 완전한 사주 분석 API (십성, 지장간, 12운성 모두 포함)
+   */
+  @Get('complete-analysis')
+  @ApiOperation({ 
+    summary: '완전한 사주 분석 (십성 + 지장간 + 12운성)',
+    description: '생년월일시를 입력받아 사주의 모든 분석 정보(십성, 지장간, 12운성)를 한 번에 제공합니다.'
+  })
+  @ApiQuery({ name: 'year', description: '년도 (1900-2100)', type: Number })
+  @ApiQuery({ name: 'month', description: '월 (1-12)', type: Number })
+  @ApiQuery({ name: 'day', description: '일 (1-31)', type: Number })
+  @ApiQuery({ name: 'hour', description: '시간 (0-23)', type: Number })
+  @ApiQuery({ name: 'minute', description: '분 (0-59)', type: Number, required: false })
+  @ApiQuery({ name: 'isSolar', description: '양력 여부 (true: 양력, false: 음력)', type: Boolean, required: false })
+  @ApiQuery({ name: 'isLeapMonth', description: '윤달 여부 (음력인 경우만)', type: Boolean, required: false })
+  @ApiResponse({
+    status: 200,
+    description: '완전한 사주 분석 성공',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        message: { type: 'string' },
+        data: { type: 'object' },
+        formatted: { type: 'object' }
+      }
+    }
+  })
+  @ApiResponse({ status: 400, description: '잘못된 요청 파라미터' })
+  @ApiResponse({ status: 500, description: '서버 오류' })
+  async getCompleteAnalysis(
+    @Query('year', ParseIntPipe) year: number,
+    @Query('month', ParseIntPipe) month: number,
+    @Query('day', ParseIntPipe) day: number,
+    @Query('hour', ParseIntPipe) hour: number,
+    @Query('minute') minute?: number,
+    @Query('isSolar') isSolar?: boolean,
+    @Query('isLeapMonth') isLeapMonth?: boolean
+  ) {
+    try {
+      // 파라미터 검증
+      this.validateInput(year, month, day, hour, minute);
+
+      // 기본값 설정
+      const validMinute = minute ?? 0;
+      const validIsSolar = isSolar ?? true;
+      const validIsLeapMonth = isLeapMonth ?? false;
+
+      // 모든 분석 정보 포함 사주 추출
+      const completeData = await this.sajuService.getSajuWithAllAnalysis(
+        year, month, day, hour, validMinute, validIsSolar, validIsLeapMonth
+      );
+
+      // 각각의 포맷팅된 결과
+      const formattedBasic = this.sajuService.formatSajuFromCalendar(completeData);
+      const formattedTwelveLifeStages = this.sajuService.formatTwelveLifeStages(completeData.twelveLifeStages, completeData);
+
+      return {
+        success: true,
+        message: '완전한 사주 분석이 완료되었습니다.',
+        data: completeData,
+        formatted: {
+          basicSaju: formattedBasic,
+          twelveLifeStages: formattedTwelveLifeStages
+        }
+      };
+    } catch (error) {
+      console.error('완전한 사주 분석 오류:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new HttpException(
+        `사주 분석 중 오류가 발생했습니다: ${errorMessage}`,
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
+
+  /**
+   * 사주 12신살 계산 API (각 지지별)
+   */
+  @Get('twelve-sinsal')
+  @ApiOperation({ 
+    summary: '사주 12신살 계산 (각 지지별)',
+    description: '생년월일시를 입력받아 사주의 각 지지별 12신살을 모두 계산합니다. 연지, 월지, 일지, 시지를 각각 기준으로 하여 4개의 12신살 결과를 제공합니다.'
+  })
+  @ApiQuery({ name: 'year', description: '년도 (1900-2100)', type: Number })
+  @ApiQuery({ name: 'month', description: '월 (1-12)', type: Number })
+  @ApiQuery({ name: 'day', description: '일 (1-31)', type: Number })
+  @ApiQuery({ name: 'hour', description: '시간 (0-23)', type: Number })
+  @ApiQuery({ name: 'minute', description: '분 (0-59)', type: Number, required: false })
+  @ApiQuery({ name: 'isSolar', description: '양력 여부 (true: 양력, false: 음력)', type: Boolean, required: false })
+  @ApiQuery({ name: 'isLeapMonth', description: '윤달 여부 (음력인 경우만)', type: Boolean, required: false })
+  @ApiResponse({
+    status: 200,
+    description: '12신살 계산 성공',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        message: { type: 'string' },
+        data: { type: 'object' },
+        formatted: { type: 'string' }
+      }
+    }
+  })
+  @ApiResponse({ status: 400, description: '잘못된 요청 파라미터' })
+  @ApiResponse({ status: 500, description: '서버 오류' })
+  async getTwelveSinsal(
+    @Query('year', ParseIntPipe) year: number,
+    @Query('month', ParseIntPipe) month: number,
+    @Query('day', ParseIntPipe) day: number,
+    @Query('hour', ParseIntPipe) hour: number,
+    @Query('minute') minute?: number,
+    @Query('isSolar') isSolar?: boolean,
+    @Query('isLeapMonth') isLeapMonth?: boolean
+  ) {
+    try {
+      // 파라미터 검증
+      this.validateInput(year, month, day, hour, minute);
+
+      // 기본값 설정
+      const validMinute = minute ?? 0;
+      const validIsSolar = isSolar ?? true;
+      const validIsLeapMonth = isLeapMonth ?? false;
+
+      // 사주 정보 추출
+      const saju = await this.sajuService.getSajuByDateTime(
+        year, month, day, hour, validMinute, validIsSolar, validIsLeapMonth
+      );
+
+      // 12신살 계산 (각 지지별)
+      const twelveSinsal = this.sajuService.calculateTwelveSinsalFromSaju(saju);
+
+      // 포맷팅된 결과
+      const formatted = this.sajuService.formatAllTwelveSinsalResults(twelveSinsal, saju);
+
+      return {
+        success: true,
+        message: '12신살 계산이 완료되었습니다. (각 지지별)',
+        data: {
+          basicSaju: saju,
+          twelveSinsal,
+        },
+        formatted
+      };
+    } catch (error) {
+      console.error('12신살 계산 오류:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new HttpException(
+        `12신살 계산 중 오류가 발생했습니다: ${errorMessage}`,
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
+
+  /**
+   * 단일 지지 12신살 계산 API
+   */
+  @Get('calculate-single-sinsal')
+  @ApiOperation({ 
+    summary: '단일 지지 12신살 계산',
+    description: '특정 지지를 기준으로 12신살을 계산하는 유틸리티 API입니다. 예: 진(辰) 기준 → 화개살'
+  })
+  @ApiQuery({ name: 'branch', description: '기준 지지 (지지 한자: 子丑寅卯辰巳午未申酉戌亥)', type: String })
+  @ApiResponse({
+    status: 200,
+    description: '12신살 계산 성공',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        message: { type: 'string' },
+        data: { type: 'object' },
+        formatted: { type: 'string' }
+      }
+    }
+  })
+  @ApiResponse({ status: 400, description: '잘못된 요청 파라미터' })
+  @ApiResponse({ status: 500, description: '서버 오류' })
+  async calculateSingleSinsal(
+    @Query('branch') branch: string
+  ) {
+    try {
+      if (!branch) {
+        throw new HttpException(
+          '기준 지지를 입력해주세요.',
+          HttpStatus.BAD_REQUEST
+        );
+      }
+
+      // 지지를 EarthlyBranch enum으로 변환
+      const earthlyBranch = this.sajuService.convertChineseToEarthlyBranch(branch);
+
+      // 12신살 계산
+      const sinsalResult = this.sajuService.calculateTwelveSinsalResult(earthlyBranch);
+
+      // 포맷팅된 결과
+      const formatted = this.sajuService.formatTwelveSinsalResult(sinsalResult);
+
+      return {
+        success: true,
+        message: '12신살 계산이 완료되었습니다.',
+        data: {
+          baseBranch: branch,
+          sinsalResult
+        },
+        formatted
+      };
+    } catch (error) {
+      console.error('단일 12신살 계산 오류:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new HttpException(
+        `12신살 계산 중 오류가 발생했습니다: ${errorMessage}`,
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
 }

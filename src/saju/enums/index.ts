@@ -5,3 +5,4 @@ export { Gender } from './gender.enum';
 export { TenStars } from './ten-stars.enum';
 export { TwelveLifeStages } from './twelve-life-stages.enum';
 export { TwelveSpirits } from './twelve-spirits.enum';
+export { TwelveSinsal, SAMHAP_GROUPS, TWELVE_SINSAL_ORDER } from './twelve-sinsal.enum';
